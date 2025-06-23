@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.MutableLiveData
+import com.devil7softwares.aescamera.utils.CommonUtils
 import java.io.File
 
 class AESCameraApplication : Application() {
@@ -20,15 +21,7 @@ class AESCameraApplication : Application() {
                 return
             }
 
-            // Generate MD5 digest of the key
-            val md = java.security.MessageDigest.getInstance("MD5")
-            val digest = md.digest(value.toByteArray())
-            val sb = StringBuilder()
-            for (b in digest) {
-                sb.append(String.format("%02x", b))
-            }
-
-            this.keyDigest = sb.toString()
+            this.keyDigest = CommonUtils.getKeyDigest(value)
 
             keyLiveData.value = value
         }
@@ -36,21 +29,7 @@ class AESCameraApplication : Application() {
         private set(value) {
             field = value
 
-            val mediaDir = externalMediaDirs.firstOrNull()?.let {
-                File(it, resources.getString(R.string.app_name)).apply { mkdirs() }
-            }
-
-            if (value != null && mediaDir != null && mediaDir.exists()) {
-                val keyDir = File(mediaDir, value).apply { mkdirs() }
-
-                if (keyDir.exists()) {
-                    this.outputDirectory = keyDir
-                } else {
-                    this.outputDirectory = mediaDir
-                }
-            } else {
-                this.outputDirectory = filesDir
-            }
+            this.outputDirectory = CommonUtils.getOutputDirectory(value, this)
         }
     var outputDirectory: File? = null
         private set(value) {
