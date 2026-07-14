@@ -14,6 +14,10 @@ class CommonUtils {
             return "IMG-${SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())}.enc"
         }
 
+        fun getVideoFileName(): String {
+            return "VID-${SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())}.encv"
+        }
+
         fun getKeyDigest(key: String): String {
             // Generate MD5 digest of the key
             val md = java.security.MessageDigest.getInstance("MD5")

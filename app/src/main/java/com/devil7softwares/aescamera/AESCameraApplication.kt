@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.MutableLiveData
 import com.devil7softwares.aescamera.utils.CommonUtils
+import com.devil7softwares.aescamera.utils.EncryptionUtils
 import java.io.File
 
 class AESCameraApplication : Application() {
@@ -17,6 +18,7 @@ class AESCameraApplication : Application() {
 
             if (value == null) {
                 this.keyDigest = null
+                EncryptionUtils.clearKeyCache()
                 keyLiveData.value = value
                 return
             }
