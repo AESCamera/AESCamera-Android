@@ -15,4 +15,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "AES Camera"
 include(":app")
+include(":cameraview")
  

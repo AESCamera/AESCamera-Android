@@ -14,7 +14,8 @@ android {
 
     defaultConfig {
         applicationId = "com.devil7softwares.aescamera"
-        minSdk = 23
+        // 26+ required: MediaRecorder.OutputFormat.MPEG_2_TS for encrypt-while-recording
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -62,7 +63,11 @@ android {
 }
 
 dependencies {
-    implementation("com.otaliastudios:cameraview:2.7.2")
+    // Vendored CameraView 2.7.2, patched for MPEG-2 TS output
+    implementation(project(":cameraview"))
+
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
 
     implementation("androidx.legacy:legacy-support-v4:1.0.0")
     implementation("androidx.recyclerview:recyclerview:1.3.0")
