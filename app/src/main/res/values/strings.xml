@@ -24,9 +24,17 @@
     <string name="image_decode_failed_message">Failed to decode image!</string>
     <string name="file_added_to_vault_message">File added to vault</string>
 
+    <string name="video_saved_message">Encrypted video saved: %1$s</string>
+    <string name="video_recording_failed_message">Video recording failed! The encrypted file could not be finalized.</string>
+    <string name="video_recording_setup_failed_message">Unable to start encrypted recording! Recording without encryption is not supported.</string>
+
     <string name="fa_solid">solid</string>
     <string name="fa_camera">f030</string>
     <string name="fa_camera_rotate">e0d8</string>
+    <string name="fa_camera_mode_video">f03d</string>
+    <string name="fa_camera_mode_photo">f030</string>
+    <string name="fa_camera_start_recording">f192</string>
+    <string name="fa_camera_stop_recording">f04d</string>
     <string name="fa_chevron_left">f053</string>
     <string name="fa_chevron_right">f054</string>
     <string name="fa_folder_open">f07c</string>

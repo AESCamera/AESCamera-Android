@@ -3,31 +3,36 @@ package com.devil7softwares.aescamera
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.util.Log
-import android.util.TypedValue
 import android.view.View
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.devil7softwares.aescamera.databinding.ActivityMainBinding
-import com.devil7softwares.aescamera.enums.FontAwesomeStyle
 import com.devil7softwares.aescamera.list.FilesListActivity
 import com.devil7softwares.aescamera.utils.CommonUtils
 import com.devil7softwares.aescamera.utils.EncryptionUtils
 import com.devil7softwares.aescamera.utils.ThumbnailUtils
+import com.devil7softwares.aescamera.video.EncryptedVideoRecording
 import com.otaliastudios.cameraview.CameraException
 import com.otaliastudios.cameraview.PictureResult
+import com.otaliastudios.cameraview.VideoResult
 import com.otaliastudios.cameraview.controls.Facing
+import com.otaliastudios.cameraview.controls.Mode
 import com.otaliastudios.cameraview.markers.DefaultAutoFocusMarker
-import java.io.ByteArrayOutputStream
 import java.io.File
 
 
 class MainActivity : ProtectedBaseActivity() {
     private lateinit var binding: ActivityMainBinding;
+
+    private var activeRecording: EncryptedVideoRecording? = null
+
+    // When set, the next PictureResult is a preview snapshot used as the thumbnail of
+    // the video recording with this file name, not a photo to store.
+    private var pendingVideoThumbnailName: String? = null
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,6 +52,11 @@ class MainActivity : ProtectedBaseActivity() {
         }
 
         binding.camera.setLifecycleOwner(this);
+
+        // MPEG-2 TS is written sequentially, so full video recordings can target the
+        // encryption pipe (see EncryptedVideoRecording). Requires the vendored
+        // CameraView patch.
+        binding.camera.setVideoOutputFormat(MediaRecorder.OutputFormat.MPEG_2_TS)
 
         val app = application as AESCameraApplication
 
@@ -73,10 +83,27 @@ class MainActivity : ProtectedBaseActivity() {
                 super.onCameraError(exception)
                 cameraError(exception)
             }
+
+            override fun onVideoRecordingStart() {
+                super.onVideoRecordingStart()
+                videoRecordingStart()
+            }
+
+            override fun onVideoTaken(result: VideoResult) {
+                super.onVideoTaken(result)
+                videoTaken(result)
+            }
         })
 
         binding.cameraCaptureButton.setOnClickListener {
-            takePhoto()
+            if (binding.camera.mode == Mode.PICTURE) {
+                takePhoto()
+            } else {
+                startStopRecording()
+            }
+        }
+        binding.cameraModeToggleButton.setOnClickListener {
+            toggleMode()
         }
         binding.cameraFlipButton.setOnClickListener {
             flipCamera()
@@ -107,9 +134,35 @@ class MainActivity : ProtectedBaseActivity() {
     }
 
     private fun lock() {
+        // Finish writing the encrypted file before dropping the key. The encryption
+        // pipeline keeps working without the key (its cipher is already initialized).
+        if (binding.camera.isTakingVideo) {
+            binding.camera.stopVideo()
+        }
+
         val app = application as AESCameraApplication
         app.key = null
         Toast.makeText(this, "Locked", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun toggleMode() {
+        if (binding.camera.isTakingVideo) {
+            return
+        }
+
+        binding.camera.mode = if (binding.camera.mode == Mode.PICTURE) {
+            Mode.VIDEO
+        } else {
+            Mode.PICTURE
+        }
+
+        if (binding.camera.mode == Mode.PICTURE) {
+            binding.cameraCaptureButton.setIcon(getString(R.string.fa_camera))
+            binding.cameraModeToggleButton.setIcon(getString(R.string.fa_camera_mode_video))
+        } else {
+            binding.cameraCaptureButton.setIcon(getString(R.string.fa_camera_start_recording))
+            binding.cameraModeToggleButton.setIcon(getString(R.string.fa_camera_mode_photo))
+        }
     }
 
     private  fun openFilesList() {
@@ -149,23 +202,147 @@ class MainActivity : ProtectedBaseActivity() {
         binding.camera.takePicture()
     }
 
+    private fun startStopRecording() {
+        if (binding.camera.isTakingVideo) {
+            binding.camera.stopVideo()
+        } else {
+            startRecording()
+        }
+    }
+
+    private fun startRecording() {
+        val app = application as AESCameraApplication
+        val key = app.key
+        val outputDirectory = app.outputDirectory
+        if (key == null) {
+            Toast.makeText(this, "Key not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (outputDirectory == null) {
+            Toast.makeText(this, "No output directory set", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val outputFile = File(outputDirectory, CommonUtils.getVideoFileName())
+
+        // No plaintext fallback: if the encryption pipeline can't be set up, we don't
+        // record at all.
+        val recording = try {
+            EncryptedVideoRecording(outputFile, key)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set up encrypted recording: ${e.message}", e)
+            Toast.makeText(
+                this,
+                getString(R.string.video_recording_setup_failed_message),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        activeRecording = recording
+        binding.camera.takeVideo(recording.writeFileDescriptor)
+        setRecordingUi(true)
+    }
+
+    private fun videoRecordingStart() {
+        val recording = activeRecording ?: return
+
+        // MediaRecorder has dup'ed the pipe fd by now; ours must be closed so the drain
+        // thread sees EOF when the recorder stops.
+        recording.closeWriteSide()
+
+        // Grab a preview frame as the (encrypted) thumbnail for this video.
+        pendingVideoThumbnailName = recording.outputFile.name
+        binding.camera.takePictureSnapshot()
+    }
+
+    private fun videoTaken(result: VideoResult) {
+        val recording = activeRecording
+        activeRecording = null
+        if (recording == null) {
+            return
+        }
+
+        Thread {
+            try {
+                recording.finish(result.rotation)
+                runOnUiThread {
+                    setRecordingUi(false)
+                    Toast.makeText(
+                        this,
+                        getString(R.string.video_saved_message, recording.outputFile.name),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to finalize encrypted recording: ${e.message}", e)
+                recording.abort()
+                runOnUiThread {
+                    setRecordingUi(false)
+                    Toast.makeText(
+                        this,
+                        getString(R.string.video_recording_failed_message),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun setRecordingUi(recording: Boolean) {
+        binding.cameraCaptureButton.setIcon(
+            getString(
+                if (recording) R.string.fa_camera_stop_recording
+                else R.string.fa_camera_start_recording
+            )
+        )
+        binding.cameraModeToggleButton.isEnabled = !recording
+        binding.cameraFlipButton.isEnabled = !recording
+        binding.openFilesListButton.isEnabled = !recording
+        binding.flashButton.isEnabled = !recording
+    }
+
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun cameraError(exception: CameraException) {
-        val msg = "Photo capture failed: ${exception.message}"
+        val msg = "Capture failed: ${exception.message}"
         Toast.makeText(baseContext, msg, Toast.LENGTH_LONG).show()
         Log.e(TAG, msg, exception)
+
+        val recording = activeRecording
+        if (recording != null) {
+            activeRecording = null
+            Thread { recording.abort() }.start()
+            setRecordingUi(false)
+        }
+
         enableControls()
     }
 
     private fun pictureShutter() {
-        disableControls()
+        // Video thumbnail snapshots must not lock the recording controls.
+        if (pendingVideoThumbnailName == null) {
+            disableControls()
+        }
     }
 
     private fun pictureTaken(pictureResult: PictureResult) {
         val app = application as AESCameraApplication
+
+        // Preview snapshot taken at recording start: store it as the video's thumbnail.
+        val videoThumbnailName = pendingVideoThumbnailName
+        if (videoThumbnailName != null) {
+            pendingVideoThumbnailName = null
+            try {
+                ThumbnailUtils.createImageThumbnail(app, videoThumbnailName, pictureResult.data)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create video thumbnail: ${e.message}", e)
+            }
+            return
+        }
+
         val key = app.key
         val outputDirectory = app.outputDirectory
         val thumbnailDirectory = app.thumbnailDirectory
@@ -212,6 +389,7 @@ class MainActivity : ProtectedBaseActivity() {
     companion object {
         private const val TAG = "AESCamera"
         private const val REQUEST_CODE_PERMISSIONS = 20
-        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+        private val REQUIRED_PERMISSIONS =
+            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     }
 }
