@@ -37,6 +37,10 @@ public class VideoResult {
         public VideoCodec videoCodec;
         public AudioCodec audioCodec;
         public Audio audio;
+        // AESCamera patch: MediaRecorder.OutputFormat value. DEFAULT keeps the
+        // CamcorderProfile container (MP4/3GP); MPEG_2_TS enables sequential output
+        // suitable for non-seekable targets (pipes), for encrypt-while-recording.
+        public int outputFormat = android.media.MediaRecorder.OutputFormat.DEFAULT;
         public long maxSize;
         public int maxDuration;
         public int endReason;

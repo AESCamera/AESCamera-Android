@@ -1040,6 +1040,7 @@ public class CameraView extends FrameLayout implements LifecycleObserver {
         setPictureFormat(oldEngine.getPictureFormat());
         setVideoSize(oldEngine.getVideoSizeSelector());
         setVideoCodec(oldEngine.getVideoCodec());
+        setVideoOutputFormat(oldEngine.getVideoOutputFormat()); // AESCamera patch
         setVideoMaxSize(oldEngine.getVideoMaxSize());
         setVideoMaxDuration(oldEngine.getVideoMaxDuration());
         setVideoBitRate(oldEngine.getVideoBitRate());
@@ -2097,6 +2098,30 @@ public class CameraView extends FrameLayout implements LifecycleObserver {
     @NonNull
     public VideoCodec getVideoCodec() {
         return mCameraEngine.getVideoCodec();
+    }
+
+    /**
+     * AESCamera patch: sets the {@link android.media.MediaRecorder.OutputFormat} used for
+     * full video recordings (not snapshots).
+     * {@link android.media.MediaRecorder.OutputFormat#DEFAULT} keeps the device
+     * CamcorderProfile container (MP4/3GP).
+     * {@link android.media.MediaRecorder.OutputFormat#MPEG_2_TS} produces a strictly
+     * sequential stream that can be written to a non-seekable target such as a pipe
+     * file descriptor passed to {@link #takeVideo(FileDescriptor)}; it forces H.264/AAC
+     * and does not support orientation or location metadata.
+     *
+     * @param outputFormat a MediaRecorder.OutputFormat constant
+     */
+    public void setVideoOutputFormat(int outputFormat) {
+        mCameraEngine.setVideoOutputFormat(outputFormat);
+    }
+
+    /**
+     * AESCamera patch: gets the current output format for full video recordings.
+     * @return a MediaRecorder.OutputFormat constant
+     */
+    public int getVideoOutputFormat() {
+        return mCameraEngine.getVideoOutputFormat();
     }
 
     /**

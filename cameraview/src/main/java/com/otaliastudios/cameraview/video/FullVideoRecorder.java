@@ -118,6 +118,15 @@ public abstract class FullVideoRecorder extends VideoRecorder {
                 && stub.audioCodec == AudioCodec.AAC_ELD) {
             mProfile.audioCodec = MediaRecorder.AudioEncoder.AAC_ELD;
         }
+        // AESCamera patch: MPEG-2 TS is written strictly sequentially, so it works with
+        // non-seekable outputs (pipes). TS only carries H.264 + AAC, so force those
+        // regardless of profile/codec settings above.
+        boolean isMpeg2Ts = stub.outputFormat == MediaRecorder.OutputFormat.MPEG_2_TS;
+        if (isMpeg2Ts) {
+            mProfile.fileFormat = MediaRecorder.OutputFormat.MPEG_2_TS;
+            mProfile.videoCodec = MediaRecorder.VideoEncoder.H264;
+            mProfile.audioCodec = MediaRecorder.AudioEncoder.AAC;
+        }
         mMediaRecorder.setOutputFormat(mProfile.fileFormat);
 
         // 4. Update the VideoResult stub with information from the profile, if the
@@ -227,7 +236,10 @@ public abstract class FullVideoRecorder extends VideoRecorder {
         }
 
         // 7. Set other params
-        if (stub.location != null) {
+        // AESCamera patch: location and orientation hints are MP4/3GP-only metadata and
+        // are not supported by the MPEG-2 TS muxer. The caller must store/apply rotation
+        // itself when recording TS (see VideoResult#getRotation()).
+        if (stub.location != null && !isMpeg2Ts) {
             mMediaRecorder.setLocation(
                     (float) stub.location.getLatitude(),
                     (float) stub.location.getLongitude());
@@ -241,7 +253,9 @@ public abstract class FullVideoRecorder extends VideoRecorder {
             throw new IllegalStateException("file and fileDescriptor are both null.");
         }
 
-        mMediaRecorder.setOrientationHint(stub.rotation);
+        if (!isMpeg2Ts) {
+            mMediaRecorder.setOrientationHint(stub.rotation);
+        }
         // When using MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED, the recorder might have stopped
         // before calling it. But this creates issues on Camera2 Legacy devices - they need a
         // callback BEFORE the recorder stops (see Camera2Engine). For this reason, we increase

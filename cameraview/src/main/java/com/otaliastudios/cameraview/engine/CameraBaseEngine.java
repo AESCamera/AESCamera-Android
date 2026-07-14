@@ -62,6 +62,9 @@ public abstract class CameraBaseEngine extends CameraEngine {
     @SuppressWarnings("WeakerAccess") protected Flash mFlash;
     @SuppressWarnings("WeakerAccess") protected WhiteBalance mWhiteBalance;
     @SuppressWarnings("WeakerAccess") protected VideoCodec mVideoCodec;
+    // AESCamera patch
+    @SuppressWarnings("WeakerAccess") protected int mVideoOutputFormat =
+            android.media.MediaRecorder.OutputFormat.DEFAULT;
     @SuppressWarnings("WeakerAccess") protected AudioCodec mAudioCodec;
     @SuppressWarnings("WeakerAccess") protected Hdr mHdr;
     @SuppressWarnings("WeakerAccess") protected PictureFormat mPictureFormat;
@@ -233,6 +236,17 @@ public abstract class CameraBaseEngine extends CameraEngine {
     @Override
     public final VideoCodec getVideoCodec() {
         return mVideoCodec;
+    }
+
+    // AESCamera patch: MediaRecorder.OutputFormat plumbing (see VideoResult.Stub.outputFormat).
+    @Override
+    public final void setVideoOutputFormat(int outputFormat) {
+        mVideoOutputFormat = outputFormat;
+    }
+
+    @Override
+    public final int getVideoOutputFormat() {
+        return mVideoOutputFormat;
     }
 
     @Override
@@ -595,6 +609,7 @@ public abstract class CameraBaseEngine extends CameraEngine {
                 stub.isSnapshot = false;
                 stub.videoCodec = mVideoCodec;
                 stub.audioCodec = mAudioCodec;
+                stub.outputFormat = mVideoOutputFormat; // AESCamera patch
                 stub.location = mLocation;
                 stub.facing = mFacing;
                 stub.audio = mAudio;

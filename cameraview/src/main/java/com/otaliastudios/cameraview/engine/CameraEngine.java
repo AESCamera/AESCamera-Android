@@ -632,6 +632,10 @@ public abstract class CameraEngine implements
     public abstract void setVideoCodec(@NonNull VideoCodec codec);
     @NonNull public abstract VideoCodec getVideoCodec();
 
+    // AESCamera patch: MediaRecorder.OutputFormat for full video recordings.
+    public abstract void setVideoOutputFormat(int outputFormat);
+    public abstract int getVideoOutputFormat();
+
     public abstract void setVideoBitRate(int videoBitRate);
     public abstract int getVideoBitRate();
 
