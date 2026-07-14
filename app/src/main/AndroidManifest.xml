@@ -36,6 +36,9 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".viewer.DecryptedVideoPlayerActivity"
+            android:exported="false" />
+        <activity
             android:name=".list.FilesListActivity"
             android:exported="false" />
         <activity

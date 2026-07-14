@@ -24,6 +24,8 @@
     <string name="image_decode_failed_message">Failed to decode image!</string>
     <string name="file_added_to_vault_message">File added to vault</string>
 
+    <string name="decrypted_video_player_title">Decrypted Video</string>
+    <string name="video_playback_failed_message">Failed to play video! Check that the key is correct.</string>
     <string name="video_saved_message">Encrypted video saved: %1$s</string>
     <string name="video_recording_failed_message">Video recording failed! The encrypted file could not be finalized.</string>
     <string name="video_recording_setup_failed_message">Unable to start encrypted recording! Recording without encryption is not supported.</string>
