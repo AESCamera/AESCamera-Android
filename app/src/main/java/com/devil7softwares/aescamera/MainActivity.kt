@@ -5,8 +5,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -251,9 +254,30 @@ class MainActivity : ProtectedBaseActivity() {
         // thread sees EOF when the recorder stops.
         recording.closeWriteSide()
 
+        // The recorder is actually running from this callback on, so this is where the
+        // duration counter starts.
+        showRecordingIndicator()
+
         // Grab a preview frame as the (encrypted) thumbnail for this video.
         pendingVideoThumbnailName = recording.outputFile.name
         binding.camera.takePictureSnapshot()
+    }
+
+    private fun showRecordingIndicator() {
+        binding.recordingDuration.base = SystemClock.elapsedRealtime()
+        binding.recordingDuration.start()
+        binding.recordingIndicator.visibility = View.VISIBLE
+        binding.recordingDot.startAnimation(AlphaAnimation(1f, 0.2f).apply {
+            duration = 600
+            repeatCount = Animation.INFINITE
+            repeatMode = Animation.REVERSE
+        })
+    }
+
+    private fun hideRecordingIndicator() {
+        binding.recordingDuration.stop()
+        binding.recordingDot.clearAnimation()
+        binding.recordingIndicator.visibility = View.GONE
     }
 
     private fun videoTaken(result: VideoResult) {
@@ -290,6 +314,9 @@ class MainActivity : ProtectedBaseActivity() {
     }
 
     private fun setRecordingUi(recording: Boolean) {
+        if (!recording) {
+            hideRecordingIndicator()
+        }
         binding.cameraCaptureButton.setIcon(
             getString(
                 if (recording) R.string.fa_camera_stop_recording
