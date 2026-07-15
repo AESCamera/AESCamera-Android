@@ -11,7 +11,7 @@
         android:layout_height="32dp"
         android:padding="0dp" />
 
-    <com.devil7softwares.aescamera.views.FontAwesomeTextView
+    <dev.dineshkumar.aescamera.views.FontAwesomeTextView
         android:id="@+id/fileIcon"
         android:layout_width="48dp"
         android:layout_height="48dp"

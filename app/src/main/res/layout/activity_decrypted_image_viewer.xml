@@ -52,7 +52,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <com.devil7softwares.aescamera.views.FontAwesomeButton
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
         android:id="@+id/decryptedImageViewResetKey"
         android:layout_width="70dp"
         android:layout_height="70dp"
@@ -79,7 +79,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:trackThickness="6dp" />
 
-    <com.devil7softwares.aescamera.views.FontAwesomeButton
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
         android:id="@+id/decryptedImageViewPrevious"
         android:layout_width="50dp"
         android:layout_height="50dp"
@@ -101,7 +101,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <com.devil7softwares.aescamera.views.FontAwesomeButton
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
         android:id="@+id/decryptedImageViewNext"
         android:layout_width="50dp"
         android:layout_height="50dp"

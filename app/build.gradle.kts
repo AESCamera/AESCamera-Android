@@ -19,11 +19,11 @@ fun requireLocalProperty(name: String): String =
         ?: throw GradleException("Missing '$name' in local.properties")
 
 android {
-    namespace = "com.devil7softwares.aescamera"
+    namespace = "dev.dineshkumar.aescamera"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.devil7softwares.aescamera"
+        applicationId = "dev.dineshkumar.aescamera"
         // 26+ required: MediaRecorder.OutputFormat.MPEG_2_TS for encrypt-while-recording
         minSdk = 26
         targetSdk = 34
