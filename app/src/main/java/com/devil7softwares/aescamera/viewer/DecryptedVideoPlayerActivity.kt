@@ -8,6 +8,7 @@ import android.view.MenuItem
 import android.view.TextureView
 import android.view.View
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -32,9 +33,14 @@ import java.io.File
  * Plays .encv files by decrypting them on the fly through [EncryptedCTRDataSourceFactory].
  * No decrypted data is ever written to disk.
  *
+ * All .encv files in the same directory are loaded as a playlist (newest first, matching
+ * the gallery order), so the controller's previous/next buttons navigate between
+ * recordings.
+ *
  * MPEG-2 TS carries no rotation metadata, so the rotation stored in the .encv header is
  * applied manually: the video TextureView is rotated (with scale compensation) and the
- * content frame's aspect ratio is swapped for 90/270 degrees.
+ * content frame's aspect ratio is swapped for 90/270 degrees. Rotation is re-read from
+ * the header on every playlist item transition.
  */
 @OptIn(UnstableApi::class)
 class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
@@ -43,6 +49,12 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     private var player: ExoPlayer? = null
     private var videoFile: File? = null
     private var rotationDegrees: Int = 0
+
+    /** Single persistent transform listener (re)applied on every layout pass. */
+    private val surfaceTransformListener =
+        View.OnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            applySurfaceTransform(v as TextureView)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +75,9 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
         videoFile = file
         supportActionBar?.title = file.name
+
+        (binding.playerView.videoSurfaceView as? TextureView)
+            ?.addOnLayoutChangeListener(surfaceTransformListener)
 
         (application as AESCameraApplication).keyLiveData.observe(this) {
             // Key changed (entered or cleared): rebuild the player with the new key.
@@ -85,6 +100,32 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         releasePlayer()
     }
 
+    /** All .encv files in the same directory, newest first — the gallery's order. */
+    private fun buildPlaylist(file: File): List<File> {
+        val siblings = file.parentFile?.listFiles()
+            ?.filter { it.isFile && !it.name.startsWith(".") && it.extension == "encv" }
+            ?.sortedByDescending { it.lastModified() }
+        return if (siblings.isNullOrEmpty()) listOf(file) else siblings
+    }
+
+    private fun readRotationDegrees(file: File): Int {
+        return try {
+            file.inputStream().use { input ->
+                val headerBytes = ByteArray(EncvHeader.SIZE)
+                var read = 0
+                while (read < headerBytes.size) {
+                    val r = input.read(headerBytes, read, headerBytes.size - read)
+                    if (r == -1) break
+                    read += r
+                }
+                EncvHeader.fromBytes(headerBytes).rotationDegrees
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read .encv header of ${file.name}: ${e.message}", e)
+            0
+        }
+    }
+
     private fun initializePlayer() {
         if (player != null) {
             return
@@ -99,39 +140,46 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
         clearError()
 
-        rotationDegrees = try {
-            file.inputStream().use { input ->
-                val headerBytes = ByteArray(EncvHeader.SIZE)
-                var read = 0
-                while (read < headerBytes.size) {
-                    val r = input.read(headerBytes, read, headerBytes.size - read)
-                    if (r == -1) break
-                    read += r
-                }
-                EncvHeader.fromBytes(headerBytes).rotationDegrees
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read .encv header: ${e.message}", e)
-            showError(getString(R.string.video_playback_failed_message))
-            return
-        }
+        rotationDegrees = readRotationDegrees(file)
+
+        val playlist = buildPlaylist(file)
+        val startIndex =
+            playlist.indexOfFirst { it.absolutePath == file.absolutePath }.coerceAtLeast(0)
 
         // MediaRecorder's TS output has no PCR (so ExoPlayer can't derive duration or
         // seek) and no H.264 AUD NALs (so samples wouldn't be split). PtsSeekableTsExtractor
         // handles both: it enables access-unit detection and substitutes a linear seek map
-        // whose duration is measured from the PES PTS at each end of the file. The duration
-        // lambda runs on ExoPlayer's loader thread, not the main thread.
-        val mediaSourceFactory = ProgressiveMediaSource.Factory(
-            EncryptedCTRDataSourceFactory(key),
-            ExtractorsFactory {
-                arrayOf<Extractor>(
-                    PtsSeekableTsExtractor { EncvDurationReader.readDurationUs(file, key) }
+        // whose duration is measured from the PES PTS at each end of the file. The URI-aware
+        // overload is needed so each playlist item measures its own file; it is invoked on
+        // ExoPlayer's loader thread, not the main thread.
+        val extractorsFactory = object : ExtractorsFactory {
+            override fun createExtractors(): Array<Extractor> =
+                arrayOf(PtsSeekableTsExtractor { C.TIME_UNSET })
+
+            override fun createExtractors(
+                uri: Uri,
+                responseHeaders: Map<String, List<String>>
+            ): Array<Extractor> {
+                val itemFile = uri.path?.let { File(it) }
+                return arrayOf(
+                    PtsSeekableTsExtractor {
+                        itemFile?.let { EncvDurationReader.readDurationUs(it, key) }
+                            ?: C.TIME_UNSET
+                    }
                 )
             }
+        }
+
+        val mediaSourceFactory = ProgressiveMediaSource.Factory(
+            EncryptedCTRDataSourceFactory(key),
+            extractorsFactory
         )
 
         val exoPlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            // Don't auto-advance to the next recording when one finishes; the user
+            // navigates explicitly with the previous/next buttons.
+            .setPauseAtEndOfMediaItems(true)
             .build()
 
         exoPlayer.addListener(object : Player.Listener {
@@ -141,13 +189,28 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
                 showError(getString(R.string.video_playback_failed_message), showResetKey = true)
             }
 
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val itemFile = mediaItem?.localConfiguration?.uri?.path?.let { File(it) }
+                    ?: return
+                videoFile = itemFile
+                supportActionBar?.title = itemFile.name
+                rotationDegrees = readRotationDegrees(itemFile)
+                // Reset the transform now; onVideoSizeChanged refreshes the aspect ratio.
+                (binding.playerView.videoSurfaceView as? TextureView)
+                    ?.let { applySurfaceTransform(it) }
+            }
+
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 applyRotation(videoSize)
             }
         })
 
         binding.playerView.player = exoPlayer
-        exoPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+        exoPlayer.setMediaItems(
+            playlist.map { MediaItem.fromUri(Uri.fromFile(it)) },
+            startIndex,
+            C.TIME_UNSET
+        )
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
 
@@ -167,7 +230,7 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
      * must be swapped.
      */
     private fun applyRotation(videoSize: VideoSize) {
-        if (rotationDegrees == 0 || videoSize.width == 0 || videoSize.height == 0) {
+        if (videoSize.width == 0 || videoSize.height == 0) {
             return
         }
 
@@ -180,20 +243,27 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
             contentFrame?.setAspectRatio(videoSize.height.toFloat() / videoSize.width)
         }
 
-        textureView.addOnLayoutChangeListener { v, left, _, right, _, _, _, _, _ ->
-            val width = (right - left).toFloat()
-            val height = v.height.toFloat()
-            if (width > 0 && height > 0) {
-                v.pivotX = width / 2f
-                v.pivotY = height / 2f
-                v.rotation = rotationDegrees.toFloat()
-                if (rotationDegrees % 180 != 0) {
-                    v.scaleX = height / width
-                    v.scaleY = width / height
-                }
-            }
-        }
+        applySurfaceTransform(textureView)
         textureView.requestLayout()
+    }
+
+    /** Rotates/scales the TextureView for [rotationDegrees]; identity when rotation is 0. */
+    private fun applySurfaceTransform(textureView: TextureView) {
+        val width = textureView.width.toFloat()
+        val height = textureView.height.toFloat()
+        if (width <= 0 || height <= 0) {
+            return
+        }
+        textureView.pivotX = width / 2f
+        textureView.pivotY = height / 2f
+        textureView.rotation = rotationDegrees.toFloat()
+        if (rotationDegrees % 180 != 0) {
+            textureView.scaleX = height / width
+            textureView.scaleY = width / height
+        } else {
+            textureView.scaleX = 1f
+            textureView.scaleY = 1f
+        }
     }
 
     private fun showError(message: String, showResetKey: Boolean = false) {
