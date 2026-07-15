@@ -14,9 +14,28 @@ object ImageUtils {
      * Camera HALs usually store portrait photos as landscape pixel data plus an EXIF
      * orientation tag, which [BitmapFactory] ignores — so the tag has to be applied
      * manually or portrait photos render sideways.
+     *
+     * [minDimension], when given, subsamples the decode (power-of-two [BitmapFactory
+     * .Options.inSampleSize]) so that both dimensions stay >= it. Decoding a
+     * multi-megapixel JPEG at 1/8–1/16 size is roughly an order of magnitude faster and
+     * allocates a fraction of the memory — use it whenever a small target (thumbnail)
+     * is being produced.
      */
-    fun decodeOriented(bytes: ByteArray): Bitmap {
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    fun decodeOriented(bytes: ByteArray, minDimension: Int? = null): Bitmap {
+        val options = BitmapFactory.Options()
+        if (minDimension != null && minDimension > 0) {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            var sampleSize = 1
+            while (bounds.outWidth / (sampleSize * 2) >= minDimension
+                && bounds.outHeight / (sampleSize * 2) >= minDimension
+            ) {
+                sampleSize *= 2
+            }
+            options.inSampleSize = sampleSize
+        }
+
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             ?: throw IllegalArgumentException("Not a decodable image")
 
         val orientation = try {

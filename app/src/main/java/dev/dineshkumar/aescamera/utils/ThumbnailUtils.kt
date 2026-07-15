@@ -25,18 +25,19 @@ class ThumbnailUtils {
                 return
             }
 
-            // Create thumbnail (EXIF-oriented, so portrait photos get portrait thumbnails)
-            val fullSizeImage = ImageUtils.decodeOriented(inputPicture)
-
             val thumbnailWidth: Int = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP,
                 24f,
                 application.resources.displayMetrics
             ).toInt()
-            val thumbnailHeight = fullSizeImage.height * thumbnailWidth / fullSizeImage.width;
+
+            // Subsampled, EXIF-oriented decode: a full-resolution decode of a
+            // multi-megapixel JPEG takes hundreds of ms just to produce a tiny thumbnail.
+            val sourceImage = ImageUtils.decodeOriented(inputPicture, thumbnailWidth)
+            val thumbnailHeight = sourceImage.height * thumbnailWidth / sourceImage.width
 
             val thumbnail = Bitmap.createScaledBitmap(
-                fullSizeImage,
+                sourceImage,
                 thumbnailWidth,
                 thumbnailHeight,
                 true

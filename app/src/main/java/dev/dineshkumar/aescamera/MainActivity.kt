@@ -226,29 +226,45 @@ class MainActivity : ProtectedBaseActivity() {
             return
         }
 
-        // The vault dir lives on shared storage and can vanish underneath us (file
-        // managers, MediaProvider cleanup); recreate it rather than failing with ENOENT.
-        outputDirectory.mkdirs()
-
         val outputFile = File(outputDirectory, CommonUtils.getVideoFileName())
 
-        // No plaintext fallback: if the encryption pipeline can't be set up, we don't
-        // record at all.
-        val recording = try {
-            EncryptedVideoRecording(outputFile, key)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to set up encrypted recording: ${e.message}", e)
-            Toast.makeText(
-                this,
-                getString(R.string.video_recording_setup_failed_message),
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
+        // Setting up the recording derives an encryption key (PBKDF2, ~100 ms), so it
+        // runs off the main thread; controls stay disabled until the recorder starts,
+        // which also prevents a double-tap from starting two recordings.
+        disableControls()
+        Thread {
+            // No plaintext fallback: if the encryption pipeline can't be set up, we
+            // don't record at all. mkdirs: the vault dir lives on shared storage and
+            // can vanish underneath us; recreate it rather than failing with ENOENT.
+            val recording = try {
+                outputDirectory.mkdirs()
+                EncryptedVideoRecording(outputFile, key)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set up encrypted recording: ${e.message}", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.video_recording_setup_failed_message),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    enableControls()
+                }
+                return@Thread
+            }
 
-        activeRecording = recording
-        binding.camera.takeVideo(recording.writeFileDescriptor)
-        setRecordingUi(true)
+            runOnUiThread {
+                if (isFinishing || isDestroyed || app.key == null) {
+                    // Left the screen or locked while setting up: don't start recording.
+                    Thread { recording.abort() }.start()
+                    enableControls()
+                    return@runOnUiThread
+                }
+                activeRecording = recording
+                binding.camera.takeVideo(recording.writeFileDescriptor)
+                setRecordingUi(true)
+                enableControls()
+            }
+        }.start()
     }
 
     private fun videoRecordingStart() {
@@ -363,20 +379,25 @@ class MainActivity : ProtectedBaseActivity() {
         val app = application as AESCameraApplication
 
         // Preview snapshot taken at recording start: store it as the video's thumbnail.
+        // Thumbnail creation encrypts (PBKDF2 + AES), so keep it off the main thread —
+        // this runs while the recording is starting.
         val videoThumbnailName = pendingVideoThumbnailName
         if (videoThumbnailName != null) {
             pendingVideoThumbnailName = null
-            try {
-                ThumbnailUtils.createImageThumbnail(app, videoThumbnailName, pictureResult.data)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create video thumbnail: ${e.message}", e)
-            }
+            Thread {
+                try {
+                    ThumbnailUtils.createImageThumbnail(
+                        app, videoThumbnailName, pictureResult.data
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to create video thumbnail: ${e.message}", e)
+                }
+            }.start()
             return
         }
 
         val key = app.key
         val outputDirectory = app.outputDirectory
-        val thumbnailDirectory = app.thumbnailDirectory
         if (key == null) {
             Toast.makeText(this@MainActivity, "Key not found", Toast.LENGTH_SHORT).show()
             enableControls()
@@ -391,41 +412,47 @@ class MainActivity : ProtectedBaseActivity() {
 
         val fileName = CommonUtils.getImageFileName()
 
-        // Create main encrypted file. The vault dir lives on shared storage and can
-        // vanish underneath us (file managers, MediaProvider cleanup); recreate it and
-        // surface write failures instead of crashing.
-        try {
-            outputDirectory.mkdirs()
-            val encryptedFile = File(outputDirectory, fileName)
-            EncryptionUtils.encrypt(pictureResult.data, key).let {
-                encryptedFile.writeBytes(it)
+        // Encrypting pays a fresh PBKDF2 derivation per file (random salt), so the
+        // save + thumbnail work runs off the main thread. The controls were disabled
+        // at shutter (pictureShutter) and come back when the save finishes.
+        Thread {
+            // The vault dir lives on shared storage and can vanish underneath us (file
+            // managers, MediaProvider cleanup); recreate it and surface write failures
+            // instead of crashing.
+            try {
+                outputDirectory.mkdirs()
+                val encryptedFile = File(outputDirectory, fileName)
+                EncryptionUtils.encrypt(pictureResult.data, key).let {
+                    encryptedFile.writeBytes(it)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save encrypted photo: ${e.message}", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.photo_save_failed_message),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    enableControls()
+                }
+                return@Thread
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save encrypted photo: ${e.message}", e)
-            Toast.makeText(
-                this@MainActivity,
-                getString(R.string.photo_save_failed_message),
-                Toast.LENGTH_LONG
-            ).show()
-            enableControls()
-            return
-        }
 
-        if (thumbnailDirectory !== null) {
             try {
                 ThumbnailUtils.createImageThumbnail(app, fileName, pictureResult.data)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create photo thumbnail: ${e.message}", e)
             }
-        }
 
-        Toast.makeText(
-            this@MainActivity,
-            getString(R.string.photo_saved_message, fileName),
-            Toast.LENGTH_SHORT
-        ).show()
-
-        enableControls()
+            runOnUiThread {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.photo_saved_message, fileName),
+                    Toast.LENGTH_SHORT
+                ).show()
+                enableControls()
+            }
+        }.start()
     }
 
     // checks the camera permission
