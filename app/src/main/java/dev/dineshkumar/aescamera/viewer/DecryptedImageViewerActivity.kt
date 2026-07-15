@@ -296,8 +296,9 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
 
     private fun addToVault() {
         val app = application as AESCameraApplication
+        val key = app.key
 
-        if (app.key == null) {
+        if (key == null) {
             showError(getString(R.string.enter_key_message))
             return
         }
@@ -309,25 +310,30 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
             return
         }
 
+        val outputDirectory = app.outputDirectory ?: return
+
         var fileName = this.fileName ?: CommonUtils.getImageFileName()
 
         if (!fileName.endsWith(".enc")) {
             fileName = "${fileName}.enc"
         }
 
-        val outputFile = File(app.outputDirectory, fileName)
+        outputDirectory.mkdirs()
+        val outputFile = File(outputDirectory, fileName)
 
-        // Copy file from fileUri to outputFile
+        // Copy the (already encrypted) file into the vault.
         contentResolver.openInputStream(fileUri)?.use { inputStream ->
             outputFile.outputStream().use { outputStream ->
                 inputStream.copyTo(outputStream)
             }
+        }
 
-            try {
-                ThumbnailUtils.createImageThumbnail(app, fileName, inputStream.readBytes())
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create thumbnail for imported file! ${e.message}", e)
-            }
+        // The vault copy is ciphertext; the thumbnail needs the decrypted image.
+        try {
+            val decryptedBytes = EncryptionUtils.decrypt(outputFile.readBytes(), key)
+            ThumbnailUtils.createImageThumbnail(app, fileName, decryptedBytes)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create thumbnail for imported file! ${e.message}", e)
         }
 
         Toast.makeText(this, getString(R.string.file_added_to_vault_message), Toast.LENGTH_SHORT)

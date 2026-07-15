@@ -38,6 +38,10 @@ class FilesListActivity : ProtectedBaseActivity() {
 
         val app = application as AESCameraApplication
         app.keyLiveData.observe(this) {
+            // The vault directory follows the key, and the adapter's thumbnail loader
+            // captures directory + key at construction — rebuild it on key changes.
+            adapter.onDestroy()
+            setupRecyclerView()
             refreshFileList()
 
             optionsMenu?.findItem(R.id.action_lock)?.isVisible = it != null

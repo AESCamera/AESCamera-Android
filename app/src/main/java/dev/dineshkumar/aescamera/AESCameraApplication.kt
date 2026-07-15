@@ -6,8 +6,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.MutableLiveData
-import dev.dineshkumar.aescamera.utils.CommonUtils
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
+import dev.dineshkumar.aescamera.utils.VaultUtils
 import java.io.File
 
 class AESCameraApplication : Application() {
@@ -17,29 +17,23 @@ class AESCameraApplication : Application() {
             field = value
 
             if (value == null) {
-                this.keyDigest = null
                 EncryptionUtils.clearKeyCache()
+                outputDirectory = null
                 keyLiveData.value = value
                 return
             }
 
-            this.keyDigest = CommonUtils.getKeyDigest(value)
+            // Locating the vault test-decrypts each vault's verifier (a PBKDF2
+            // derivation apiece), so unlocking costs ~100 ms per existing vault.
+            outputDirectory = VaultUtils.openVault(value, this)
 
             keyLiveData.value = value
-        }
-    var keyDigest: String? = null
-        private set(value) {
-            field = value
-
-            this.outputDirectory = CommonUtils.getOutputDirectory(value, this)
         }
     var outputDirectory: File? = null
         private set(value) {
             field = value
 
-            if (value != null) {
-                this.thumbnailDirectory = File(value, ".thumbs").apply { mkdirs() }
-            }
+            thumbnailDirectory = value?.let { File(it, ".thumbs").apply { mkdirs() } }
         }
     var thumbnailDirectory: File? = null
         private set

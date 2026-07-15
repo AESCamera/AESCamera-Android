@@ -47,6 +47,10 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    testOptions {
+        // Let JVM unit tests call android.util.Log etc. as no-ops.
+        unitTests.isReturnDefaultValues = true
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
