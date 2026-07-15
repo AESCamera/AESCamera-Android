@@ -29,7 +29,11 @@ class ThumbnailLoader(
     private var currentLoadingItem: Pair<FileAdapter.FileViewHolder, File>? = null
 
     fun loadThumbnail(holder: FileAdapter.FileViewHolder, file: File) {
-        if (file.name.startsWith("IMG-") && thumbnailDirectory != null) {
+        // Videos get their thumbnail from a preview snapshot taken at recording start,
+        // stored under the same file name (see MainActivity.videoRecordingStart).
+        if ((file.name.startsWith("IMG-") || file.name.startsWith("VID-"))
+            && thumbnailDirectory != null
+        ) {
             val thumbnailFile = File(thumbnailDirectory, file.name)
             if (thumbnailFile.exists()) {
                 queueThumbnailLoad(holder, thumbnailFile)
@@ -74,7 +78,12 @@ class ThumbnailLoader(
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     if (!isPaused && holder.bindingAdapterPosition != RecyclerView.NO_POSITION) {
-                        holder.showIcon(context.getString(R.string.fa_file_image))
+                        holder.showIcon(
+                            context.getString(
+                                if (thumbnailFile.extension == "encv") R.string.fa_file_video
+                                else R.string.fa_file_image
+                            )
+                        )
                     }
                     isLoading = false
                     currentLoadingItem = null

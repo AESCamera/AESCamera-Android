@@ -81,7 +81,12 @@ class FileAdapter(
             binding.fileSize.text = formatFileSize(file.length())
             binding.fileCheckBox.isChecked = isSelected
 
-            showIcon(context.getString(R.string.fa_file_image))
+            showIcon(
+                context.getString(
+                    if (file.extension == "encv") R.string.fa_file_video
+                    else R.string.fa_file_image
+                )
+            )
             thumbnailLoader.loadThumbnail(this, file)
         }
 

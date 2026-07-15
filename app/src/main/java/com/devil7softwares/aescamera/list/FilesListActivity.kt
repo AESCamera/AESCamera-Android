@@ -18,6 +18,7 @@ import com.devil7softwares.aescamera.ProtectedBaseActivity
 import com.devil7softwares.aescamera.R
 import com.devil7softwares.aescamera.databinding.ActivityFilesListBinding
 import com.devil7softwares.aescamera.viewer.DecryptedImageViewerActivity
+import com.devil7softwares.aescamera.viewer.DecryptedVideoPlayerActivity
 import java.io.File
 
 
@@ -67,16 +68,22 @@ class FilesListActivity : ProtectedBaseActivity() {
     }
 
     private fun onItemClick(file: File, files: ArrayList<File>) {
+        if (file.extension == "encv") {
+            val intent = Intent(this, DecryptedVideoPlayerActivity::class.java)
+            intent.putExtra(DecryptedVideoPlayerActivity.EXTRA_PATH, file.absolutePath)
+            startActivity(intent)
+            return
+        }
+
         val intent = Intent(this, DecryptedImageViewerActivity::class.java)
         val uri = FileProvider.getUriForFile(this, application.packageName + ".provider", file)
-        val uris = ArrayList<Uri>(files.let {
-            it.map { file ->
-                FileProvider.getUriForFile(
-                    this,
-                    application.packageName + ".provider",
-                    file
-                )
-            }
+        // Previous/next navigation in the image viewer only makes sense across images.
+        val uris = ArrayList<Uri>(files.filter { it.extension == "enc" }.map { imageFile ->
+            FileProvider.getUriForFile(
+                this,
+                application.packageName + ".provider",
+                imageFile
+            )
         })
         intent.data = uri
         intent.putParcelableArrayListExtra("uris", uris)
@@ -105,7 +112,10 @@ class FilesListActivity : ProtectedBaseActivity() {
         val app = application as AESCameraApplication
         val files =
             (app.outputDirectory?.listFiles()
-                ?.filter { it.isFile && !it.name.startsWith(".") && it.extension == "enc" }
+                ?.filter {
+                    it.isFile && !it.name.startsWith(".")
+                            && (it.extension == "enc" || it.extension == "encv")
+                }
                 ?: emptyList()).let { list ->
                 list.sortedByDescending { it.lastModified() }
             }
