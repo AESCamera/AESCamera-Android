@@ -15,6 +15,8 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.devil7softwares.aescamera.AESCameraApplication
 import com.devil7softwares.aescamera.ProtectedBaseActivity
@@ -112,8 +114,14 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
             return
         }
 
+        // MediaRecorder's TS output (at least on some devices) contains no H.264 access
+        // unit delimiter NALs. Media3's H264Reader only splits samples at AUDs by default,
+        // so without this flag the whole stream becomes one giant sample and the video
+        // renderer fails (audio-only playback with a black screen).
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
         val mediaSourceFactory =
-            ProgressiveMediaSource.Factory(EncryptedCTRDataSourceFactory(key))
+            ProgressiveMediaSource.Factory(EncryptedCTRDataSourceFactory(key), extractorsFactory)
 
         val exoPlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
