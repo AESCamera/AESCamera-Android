@@ -1,4 +1,5 @@
-import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
+import org.gradle.api.GradleException
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -6,7 +7,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val localProperties = gradleLocalProperties(rootDir)
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun requireLocalProperty(name: String): String =
+    localProperties.getProperty(name)
+        ?: throw GradleException("Missing '$name' in local.properties")
 
 android {
     namespace = "com.devil7softwares.aescamera"
@@ -27,10 +37,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(localProperties["storeFile"] as String)
-            storePassword = localProperties["storePassword"] as String
-            keyAlias = localProperties["keyAlias"] as String
-            keyPassword = localProperties["keyPassword"] as String
+            storeFile = file(requireLocalProperty("storeFile"))
+            storePassword = requireLocalProperty("storePassword")
+            keyAlias = requireLocalProperty("keyAlias")
+            keyPassword = requireLocalProperty("keyPassword")
         }
     }
 

@@ -5,3 +5,4 @@
 # Ignore run configurations
 /runConfigurations.xml
 /deploymentTargetSelector.xml
+/deviceManager.xml
