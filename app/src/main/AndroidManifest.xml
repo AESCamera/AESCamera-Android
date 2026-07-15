@@ -41,9 +41,14 @@
         <activity
             android:name=".list.FilesListActivity"
             android:exported="false" />
+        <!-- Locked to portrait: rotating would recreate the activity and kill an active
+             recording. CameraView tracks physical device orientation with its own sensor
+             listener, so landscape-held captures still get the correct rotation. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

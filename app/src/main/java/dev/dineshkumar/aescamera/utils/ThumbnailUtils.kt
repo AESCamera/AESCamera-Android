@@ -1,7 +1,6 @@
 package dev.dineshkumar.aescamera.utils
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.TypedValue
 import dev.dineshkumar.aescamera.AESCameraApplication
 import java.io.ByteArrayOutputStream
@@ -17,15 +16,17 @@ class ThumbnailUtils {
             val thumbnailDirectory = application.thumbnailDirectory ?: return
             val key = application.key ?: return
 
-            // Create and encrypt thumbnail
+            // Create and encrypt thumbnail. Recreate the dir in case it vanished from
+            // shared storage since the key was entered.
+            thumbnailDirectory.mkdirs()
             val thumbnailFile = File(thumbnailDirectory, fileName)
 
             if (thumbnailFile.exists()) {
                 return
             }
 
-            // Create thumbnail
-            val fullSizeImage = BitmapFactory.decodeByteArray(inputPicture, 0, inputPicture.size)
+            // Create thumbnail (EXIF-oriented, so portrait photos get portrait thumbnails)
+            val fullSizeImage = ImageUtils.decodeOriented(inputPicture)
 
             val thumbnailWidth: Int = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP,

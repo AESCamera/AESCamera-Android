@@ -1,7 +1,6 @@
 package dev.dineshkumar.aescamera.viewer
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Build.VERSION
@@ -18,6 +17,7 @@ import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityDecryptedImageViewerBinding
 import dev.dineshkumar.aescamera.utils.CommonUtils
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
+import dev.dineshkumar.aescamera.utils.ImageUtils
 import dev.dineshkumar.aescamera.utils.ThumbnailUtils
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -262,7 +262,7 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
                 }
 
                 val bitmap = runCatching {
-                    BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                    ImageUtils.decodeOriented(decryptedBytes)
                 }.getOrElse {
                     Log.e(TAG, "Error: ${it.message}", it)
                     withContext(Dispatchers.Main) {

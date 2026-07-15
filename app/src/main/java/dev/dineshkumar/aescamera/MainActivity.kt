@@ -226,6 +226,10 @@ class MainActivity : ProtectedBaseActivity() {
             return
         }
 
+        // The vault dir lives on shared storage and can vanish underneath us (file
+        // managers, MediaProvider cleanup); recreate it rather than failing with ENOENT.
+        outputDirectory.mkdirs()
+
         val outputFile = File(outputDirectory, CommonUtils.getVideoFileName())
 
         // No plaintext fallback: if the encryption pipeline can't be set up, we don't
@@ -375,20 +379,51 @@ class MainActivity : ProtectedBaseActivity() {
         val thumbnailDirectory = app.thumbnailDirectory
         if (key == null) {
             Toast.makeText(this@MainActivity, "Key not found", Toast.LENGTH_SHORT).show()
+            enableControls()
+            return
+        }
+        if (outputDirectory == null) {
+            Toast.makeText(this@MainActivity, "No output directory set", Toast.LENGTH_SHORT)
+                .show()
+            enableControls()
             return
         }
 
         val fileName = CommonUtils.getImageFileName()
 
-        // Create main encrypted file
-        val encryptedFile = File(outputDirectory, fileName)
-        EncryptionUtils.encrypt(pictureResult.data, key).let {
-            encryptedFile.writeBytes(it)
+        // Create main encrypted file. The vault dir lives on shared storage and can
+        // vanish underneath us (file managers, MediaProvider cleanup); recreate it and
+        // surface write failures instead of crashing.
+        try {
+            outputDirectory.mkdirs()
+            val encryptedFile = File(outputDirectory, fileName)
+            EncryptionUtils.encrypt(pictureResult.data, key).let {
+                encryptedFile.writeBytes(it)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save encrypted photo: ${e.message}", e)
+            Toast.makeText(
+                this@MainActivity,
+                getString(R.string.photo_save_failed_message),
+                Toast.LENGTH_LONG
+            ).show()
+            enableControls()
+            return
         }
 
         if (thumbnailDirectory !== null) {
-            ThumbnailUtils.createImageThumbnail(app, fileName, pictureResult.data)
+            try {
+                ThumbnailUtils.createImageThumbnail(app, fileName, pictureResult.data)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create photo thumbnail: ${e.message}", e)
+            }
         }
+
+        Toast.makeText(
+            this@MainActivity,
+            getString(R.string.photo_saved_message, fileName),
+            Toast.LENGTH_SHORT
+        ).show()
 
         enableControls()
     }

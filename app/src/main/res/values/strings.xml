@@ -27,6 +27,8 @@
     <string name="decrypted_video_player_title">Decrypted Video</string>
     <string name="video_playback_failed_message">Failed to play video! Check that the key is correct.</string>
     <string name="video_saved_message">Encrypted video saved: %1$s</string>
+    <string name="photo_saved_message">Encrypted photo saved: %1$s</string>
+    <string name="photo_save_failed_message">Failed to save encrypted photo!</string>
     <string name="video_recording_failed_message">Video recording failed! The encrypted file could not be finalized.</string>
     <string name="video_recording_setup_failed_message">Unable to start encrypted recording! Recording without encryption is not supported.</string>
 

@@ -1,5 +1,6 @@
 package dev.dineshkumar.aescamera.utils
 
+import java.io.DataInputStream
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -62,6 +63,13 @@ data class EncvHeader(
                 rotationDegrees = bytes[6].toInt() * 90,
                 flags = bytes[7].toInt()
             )
+        }
+
+        /** Reads the plaintext header from the start of an .encv file. */
+        fun fromFile(file: File): EncvHeader {
+            val bytes = ByteArray(SIZE)
+            DataInputStream(file.inputStream()).use { it.readFully(bytes) }
+            return fromBytes(bytes)
         }
 
         /**

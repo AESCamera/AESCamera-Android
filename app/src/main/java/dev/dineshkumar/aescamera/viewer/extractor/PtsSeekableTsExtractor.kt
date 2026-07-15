@@ -1,6 +1,9 @@
 package dev.dineshkumar.aescamera.viewer.extractor
 
 import androidx.media3.common.C
+import androidx.media3.common.DataReader
+import androidx.media3.common.Format
+import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.TimestampAdjuster
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.Extractor
@@ -24,10 +27,18 @@ import androidx.media3.extractor.ts.TsExtractor
  * near-constant bitrate so the estimate lands close, and TsExtractor re-anchors sample
  * timestamps to the seek target after every seek, so the timeline stays consistent.
  *
- * [durationUsProvider] is only invoked on the loader thread (it does file I/O + crypto).
+ * The wrapper also stamps [rotationDegreesProvider]'s value (the rotation stored in the
+ * .encv header — TS itself has no rotation metadata) onto the video track's [Format], so
+ * the player pipeline rotates the picture and swaps the aspect ratio natively, exactly as
+ * it would for a rotated MP4.
+ *
+ * Both providers are only invoked on the loader thread (they do file I/O + crypto).
  */
 @UnstableApi
-class PtsSeekableTsExtractor(private val durationUsProvider: () -> Long) : Extractor {
+class PtsSeekableTsExtractor(
+    private val durationUsProvider: () -> Long,
+    private val rotationDegreesProvider: () -> Int = { 0 },
+) : Extractor {
 
     private val delegate = TsExtractor(
         TsExtractor.MODE_SINGLE_PMT,
@@ -55,7 +66,10 @@ class PtsSeekableTsExtractor(private val durationUsProvider: () -> Long) : Extra
     private inner class SeekMapReplacingOutput(private val real: ExtractorOutput) :
         ExtractorOutput {
 
-        override fun track(id: Int, type: Int): TrackOutput = real.track(id, type)
+        override fun track(id: Int, type: Int): TrackOutput {
+            val track = real.track(id, type)
+            return if (type == C.TRACK_TYPE_VIDEO) RotationInjectingTrackOutput(track) else track
+        }
 
         override fun endTracks() = real.endTracks()
 
@@ -71,6 +85,37 @@ class PtsSeekableTsExtractor(private val durationUsProvider: () -> Long) : Extra
                 real.seekMap(LinearInterpolatingSeekMap(durationUs, inputLength))
             }
         }
+    }
+
+    /** Passes everything through, adding the .encv header rotation to the video format. */
+    private inner class RotationInjectingTrackOutput(private val real: TrackOutput) :
+        TrackOutput {
+
+        override fun format(format: Format) {
+            val rotationDegrees = rotationDegreesProvider()
+            real.format(
+                if (rotationDegrees == 0) format
+                else format.buildUpon().setRotationDegrees(rotationDegrees).build()
+            )
+        }
+
+        override fun sampleData(
+            input: DataReader,
+            length: Int,
+            allowEndOfInput: Boolean,
+            sampleDataPart: Int
+        ): Int = real.sampleData(input, length, allowEndOfInput, sampleDataPart)
+
+        override fun sampleData(data: ParsableByteArray, length: Int, sampleDataPart: Int) =
+            real.sampleData(data, length, sampleDataPart)
+
+        override fun sampleMetadata(
+            timeUs: Long,
+            flags: Int,
+            size: Int,
+            offset: Int,
+            cryptoData: TrackOutput.CryptoData?
+        ) = real.sampleMetadata(timeUs, flags, size, offset, cryptoData)
     }
 
     private class LinearInterpolatingSeekMap(

@@ -5,14 +5,12 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.view.TextureView
 import android.view.View
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -20,7 +18,6 @@ import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
 import dev.dineshkumar.aescamera.viewer.extractor.EncvDurationReader
 import dev.dineshkumar.aescamera.viewer.extractor.PtsSeekableTsExtractor
-import androidx.media3.ui.AspectRatioFrameLayout
 import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
@@ -37,10 +34,9 @@ import java.io.File
  * the gallery order), so the controller's previous/next buttons navigate between
  * recordings.
  *
- * MPEG-2 TS carries no rotation metadata, so the rotation stored in the .encv header is
- * applied manually: the video TextureView is rotated (with scale compensation) and the
- * content frame's aspect ratio is swapped for 90/270 degrees. Rotation is re-read from
- * the header on every playlist item transition.
+ * MPEG-2 TS carries no rotation metadata, so [PtsSeekableTsExtractor] stamps the rotation
+ * stored in the .encv header onto the video track's Format; the player pipeline then
+ * rotates the picture and swaps the aspect ratio natively, as it would for a rotated MP4.
  */
 @OptIn(UnstableApi::class)
 class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
@@ -48,13 +44,6 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     private lateinit var binding: ActivityDecryptedVideoPlayerBinding
     private var player: ExoPlayer? = null
     private var videoFile: File? = null
-    private var rotationDegrees: Int = 0
-
-    /** Single persistent transform listener (re)applied on every layout pass. */
-    private val surfaceTransformListener =
-        View.OnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
-            applySurfaceTransform(v as TextureView)
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,9 +64,6 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
         videoFile = file
         supportActionBar?.title = file.name
-
-        (binding.playerView.videoSurfaceView as? TextureView)
-            ?.addOnLayoutChangeListener(surfaceTransformListener)
 
         (application as AESCameraApplication).keyLiveData.observe(this) {
             // Key changed (entered or cleared): rebuild the player with the new key.
@@ -108,24 +94,6 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         return if (siblings.isNullOrEmpty()) listOf(file) else siblings
     }
 
-    private fun readRotationDegrees(file: File): Int {
-        return try {
-            file.inputStream().use { input ->
-                val headerBytes = ByteArray(EncvHeader.SIZE)
-                var read = 0
-                while (read < headerBytes.size) {
-                    val r = input.read(headerBytes, read, headerBytes.size - read)
-                    if (r == -1) break
-                    read += r
-                }
-                EncvHeader.fromBytes(headerBytes).rotationDegrees
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read .encv header of ${file.name}: ${e.message}", e)
-            0
-        }
-    }
-
     private fun initializePlayer() {
         if (player != null) {
             return
@@ -140,8 +108,6 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
         clearError()
 
-        rotationDegrees = readRotationDegrees(file)
-
         val playlist = buildPlaylist(file)
         val startIndex =
             playlist.indexOfFirst { it.absolutePath == file.absolutePath }.coerceAtLeast(0)
@@ -149,12 +115,13 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         // MediaRecorder's TS output has no PCR (so ExoPlayer can't derive duration or
         // seek) and no H.264 AUD NALs (so samples wouldn't be split). PtsSeekableTsExtractor
         // handles both: it enables access-unit detection and substitutes a linear seek map
-        // whose duration is measured from the PES PTS at each end of the file. The URI-aware
-        // overload is needed so each playlist item measures its own file; it is invoked on
+        // whose duration is measured from the PES PTS at each end of the file. It also
+        // stamps the .encv header rotation onto the video format. The URI-aware overload
+        // is needed so each playlist item reads its own file; providers are invoked on
         // ExoPlayer's loader thread, not the main thread.
         val extractorsFactory = object : ExtractorsFactory {
             override fun createExtractors(): Array<Extractor> =
-                arrayOf(PtsSeekableTsExtractor { C.TIME_UNSET })
+                arrayOf(PtsSeekableTsExtractor(durationUsProvider = { C.TIME_UNSET }))
 
             override fun createExtractors(
                 uri: Uri,
@@ -162,10 +129,21 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
             ): Array<Extractor> {
                 val itemFile = uri.path?.let { File(it) }
                 return arrayOf(
-                    PtsSeekableTsExtractor {
-                        itemFile?.let { EncvDurationReader.readDurationUs(it, key) }
-                            ?: C.TIME_UNSET
-                    }
+                    PtsSeekableTsExtractor(
+                        durationUsProvider = {
+                            itemFile?.let { EncvDurationReader.readDurationUs(it, key) }
+                                ?: C.TIME_UNSET
+                        },
+                        rotationDegreesProvider = {
+                            itemFile?.let { f ->
+                                runCatching { EncvHeader.fromFile(f).rotationDegrees }
+                                    .onFailure {
+                                        Log.e(TAG, "Failed to read rotation of ${f.name}", it)
+                                    }
+                                    .getOrDefault(0)
+                            } ?: 0
+                        }
+                    )
                 )
             }
         }
@@ -194,14 +172,6 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
                     ?: return
                 videoFile = itemFile
                 supportActionBar?.title = itemFile.name
-                rotationDegrees = readRotationDegrees(itemFile)
-                // Reset the transform now; onVideoSizeChanged refreshes the aspect ratio.
-                (binding.playerView.videoSurfaceView as? TextureView)
-                    ?.let { applySurfaceTransform(it) }
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                applyRotation(videoSize)
             }
         })
 
@@ -221,49 +191,6 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         binding.playerView.player = null
         player?.release()
         player = null
-    }
-
-    /**
-     * Applies the header rotation to the video output. The TextureView is sized by the
-     * content frame for the *unrotated* video; rotating it in place requires scaling so
-     * the painted area matches the frame again, and for 90/270 the frame's aspect ratio
-     * must be swapped.
-     */
-    private fun applyRotation(videoSize: VideoSize) {
-        if (videoSize.width == 0 || videoSize.height == 0) {
-            return
-        }
-
-        val contentFrame = binding.playerView.findViewById<AspectRatioFrameLayout>(
-            androidx.media3.ui.R.id.exo_content_frame
-        )
-        val textureView = binding.playerView.videoSurfaceView as? TextureView ?: return
-
-        if (rotationDegrees % 180 != 0) {
-            contentFrame?.setAspectRatio(videoSize.height.toFloat() / videoSize.width)
-        }
-
-        applySurfaceTransform(textureView)
-        textureView.requestLayout()
-    }
-
-    /** Rotates/scales the TextureView for [rotationDegrees]; identity when rotation is 0. */
-    private fun applySurfaceTransform(textureView: TextureView) {
-        val width = textureView.width.toFloat()
-        val height = textureView.height.toFloat()
-        if (width <= 0 || height <= 0) {
-            return
-        }
-        textureView.pivotX = width / 2f
-        textureView.pivotY = height / 2f
-        textureView.rotation = rotationDegrees.toFloat()
-        if (rotationDegrees % 180 != 0) {
-            textureView.scaleX = height / width
-            textureView.scaleY = width / height
-        } else {
-            textureView.scaleX = 1f
-            textureView.scaleY = 1f
-        }
     }
 
     private fun showError(message: String, showResetKey: Boolean = false) {
