@@ -143,6 +143,7 @@ public class AudioMediaEncoder extends MediaEncoder {
         private long mLastTimeUs;
         private long mFirstTimeUs = Long.MIN_VALUE;
 
+        @SuppressWarnings("MissingPermission")
         private AudioRecordingThread() {
             setPriority(Thread.MAX_PRIORITY);
             final int minBufferSize = AudioRecord.getMinBufferSize(
