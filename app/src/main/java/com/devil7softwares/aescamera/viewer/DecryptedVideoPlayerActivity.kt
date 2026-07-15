@@ -15,8 +15,10 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.extractor.DefaultExtractorsFactory
-import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.extractor.Extractor
+import androidx.media3.extractor.ExtractorsFactory
+import com.devil7softwares.aescamera.viewer.extractor.EncvDurationReader
+import com.devil7softwares.aescamera.viewer.extractor.PtsSeekableTsExtractor
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.devil7softwares.aescamera.AESCameraApplication
 import com.devil7softwares.aescamera.ProtectedBaseActivity
@@ -114,14 +116,19 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
             return
         }
 
-        // MediaRecorder's TS output (at least on some devices) contains no H.264 access
-        // unit delimiter NALs. Media3's H264Reader only splits samples at AUDs by default,
-        // so without this flag the whole stream becomes one giant sample and the video
-        // renderer fails (audio-only playback with a black screen).
-        val extractorsFactory = DefaultExtractorsFactory()
-            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
-        val mediaSourceFactory =
-            ProgressiveMediaSource.Factory(EncryptedCTRDataSourceFactory(key), extractorsFactory)
+        // MediaRecorder's TS output has no PCR (so ExoPlayer can't derive duration or
+        // seek) and no H.264 AUD NALs (so samples wouldn't be split). PtsSeekableTsExtractor
+        // handles both: it enables access-unit detection and substitutes a linear seek map
+        // whose duration is measured from the PES PTS at each end of the file. The duration
+        // lambda runs on ExoPlayer's loader thread, not the main thread.
+        val mediaSourceFactory = ProgressiveMediaSource.Factory(
+            EncryptedCTRDataSourceFactory(key),
+            ExtractorsFactory {
+                arrayOf<Extractor>(
+                    PtsSeekableTsExtractor { EncvDurationReader.readDurationUs(file, key) }
+                )
+            }
+        )
 
         val exoPlayer = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
