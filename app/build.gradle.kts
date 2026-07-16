@@ -41,6 +41,14 @@ android {
             keyAlias = requireLocalProperty("keyAlias")
             keyPassword = requireLocalProperty("keyPassword")
         }
+        // The committed debug keystore, so debug builds from any machine share one
+        // signature and can update each other's installs.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.jks")
+            storePassword = "android"
+            keyAlias = "android_debug_key"
+            keyPassword = "android"
+        }
     }
 
 
