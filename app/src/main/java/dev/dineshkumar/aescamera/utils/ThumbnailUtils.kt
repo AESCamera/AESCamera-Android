@@ -46,8 +46,13 @@ class ThumbnailUtils {
             val thumbnailOutputStream = ByteArrayOutputStream()
             thumbnail.compress(Bitmap.CompressFormat.JPEG, 90, thumbnailOutputStream)
 
-            // Encrypt and save thumbnail
-            EncryptionUtils.encrypt(thumbnailOutputStream, key).let {
+            // Encrypt and save the thumbnail. Thumbnails use a lower PBKDF2 cost than
+            // photos: the gallery grid pays one derivation per thumbnail while scrolling.
+            EncryptionUtils.encryptImage(
+                thumbnailOutputStream.toByteArray(),
+                key,
+                EncryptionUtils.THUMBNAIL_ITERATIONS
+            ).let {
                 thumbnailFile.writeBytes(it)
             }
         }

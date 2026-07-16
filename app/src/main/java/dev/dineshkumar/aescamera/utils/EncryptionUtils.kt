@@ -8,6 +8,7 @@ import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.CipherOutputStream
 import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
@@ -19,9 +20,32 @@ internal class EncryptionUtils {
         private const val KEY_BITS = 256
         private const val KEY_CACHE_MAX_SIZE = 8
 
-        // PBKDF2 at 65536 iterations costs ~50-200ms per derivation. Video playback
-        // re-opens the file on seeks, so derived keys are cached per (password, salt).
-        // Must be cleared when the app locks (see AESCameraApplication).
+        // GCM authenticated encryption for photos/thumbnails and the vault verifier.
+        private const val GCM_NONCE_BYTES = 12
+        private const val GCM_TAG_BITS = 128
+
+        // Image container v1: [magic "AESP"][version:1][iterations:4 BE][salt:16][nonce:12][ct+tag].
+        // Self-contained on purpose: the key is derived from password + header fields
+        // only, so a shared file can be decrypted by any recipient who knows the
+        // password (the share → import flow). A file with no magic is a legacy
+        // password-derived AES/CBC photo (read via the legacy path).
+        private val IMAGE_MAGIC = byteArrayOf(0x41, 0x45, 0x53, 0x50) // "AESP"
+        private const val IMAGE_VERSION = 1
+        private const val IMAGE_SALT_BYTES = 16
+
+        // PBKDF2-SHA256 costs, stored per file so they stay tunable. Photos afford a
+        // high cost (capture already encrypts on a background thread); thumbnails pay
+        // one derivation each while scrolling the gallery grid, so theirs stays at the
+        // legacy cost. Decrypt reads the count from the header, bounded by
+        // [MAX_ITERATIONS] so a crafted header can't stall the app.
+        const val IMAGE_ITERATIONS = 210_000
+        const val THUMBNAIL_ITERATIONS = 65_000
+        private const val MAX_ITERATIONS = 10_000_000
+
+        // PBKDF2 costs ~1ms per 1k iterations on a phone. Video playback re-opens the
+        // file on seeks and the viewer revisits files on prev/next, so derived keys are
+        // cached per (algorithm, iterations, salt, password). Must be cleared when the
+        // app locks (see AESCameraApplication).
         private val keyCache =
             object : LinkedHashMap<String, SecretKeySpec>(KEY_CACHE_MAX_SIZE, 0.75f, true) {
                 override fun removeEldestEntry(
@@ -37,12 +61,25 @@ internal class EncryptionUtils {
         }
 
         @Synchronized
-        private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec {
-            val cacheKey = salt.joinToString("") { "%02x".format(it) } + ":" + password
+        private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec =
+            deriveKeyCached("PBKDF2WithHmacSHA1", password, salt, PBKDF2_ITERATIONS)
+
+        @Synchronized
+        private fun deriveKeySha256(password: String, salt: ByteArray, iterations: Int): SecretKeySpec =
+            deriveKeyCached("PBKDF2WithHmacSHA256", password, salt, iterations)
+
+        private fun deriveKeyCached(
+            algorithm: String,
+            password: String,
+            salt: ByteArray,
+            iterations: Int
+        ): SecretKeySpec {
+            val cacheKey = algorithm + ":" + iterations + ":" +
+                    salt.joinToString("") { "%02x".format(it) } + ":" + password
             keyCache[cacheKey]?.let { return it }
 
-            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1")
-            val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_BITS)
+            val factory = SecretKeyFactory.getInstance(algorithm)
+            val spec = PBEKeySpec(password.toCharArray(), salt, iterations, KEY_BITS)
             val secretKey = SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
 
             keyCache[cacheKey] = secretKey
@@ -50,7 +87,92 @@ internal class EncryptionUtils {
         }
 
         // ---------------------------------------------------------------------------------
-        // AES/CBC — photos & thumbnails (.enc): [salt(16)][iv(16)][ciphertext]
+        // AES/GCM — photos, thumbnails & vault verifier (.enc v1, authenticated).
+        // Reads legacy CBC too. Every file is self-contained: password + header fields
+        // are all that's needed to decrypt, so shared files survive the import flow.
+        // ---------------------------------------------------------------------------------
+
+        /** AES/GCM encrypt with a random nonce. Returns [nonce(12)][ciphertext+tag]. */
+        private fun gcmEncrypt(key: SecretKeySpec, plaintext: ByteArray): ByteArray {
+            val nonce = ByteArray(GCM_NONCE_BYTES).apply { SecureRandom().nextBytes(this) }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, nonce))
+            return nonce + cipher.doFinal(plaintext)
+        }
+
+        /**
+         * Reverses [gcmEncrypt]. Throws (typically `AEADBadTagException`) if the key is
+         * wrong or the data was tampered with — this is the authentication check.
+         */
+        private fun gcmDecrypt(key: SecretKeySpec, blob: ByteArray, offset: Int): ByteArray {
+            require(blob.size - offset >= GCM_NONCE_BYTES) { "GCM blob too short" }
+            val nonce = blob.copyOfRange(offset, offset + GCM_NONCE_BYTES)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, nonce))
+            val ctStart = offset + GCM_NONCE_BYTES
+            return cipher.doFinal(blob, ctStart, blob.size - ctStart)
+        }
+
+        /** True if [data] is a v1 authenticated image (has the magic + version). */
+        fun isAuthenticatedImage(data: ByteArray): Boolean {
+            if (data.size < IMAGE_MAGIC.size + 1) return false
+            for (i in IMAGE_MAGIC.indices) {
+                if (data[i] != IMAGE_MAGIC[i]) return false
+            }
+            return data[IMAGE_MAGIC.size].toInt() == IMAGE_VERSION
+        }
+
+        /**
+         * Encrypts [data] into the self-contained v1 authenticated format. [iterations]
+         * is the PBKDF2 cost paid by every later decrypt of this file — [IMAGE_ITERATIONS]
+         * for photos, [THUMBNAIL_ITERATIONS] for thumbnails.
+         */
+        fun encryptImage(
+            data: ByteArray,
+            password: String,
+            iterations: Int = IMAGE_ITERATIONS
+        ): ByteArray {
+            val salt = ByteArray(IMAGE_SALT_BYTES).apply { SecureRandom().nextBytes(this) }
+            val key = deriveKeySha256(password, salt, iterations)
+            return IMAGE_MAGIC + byteArrayOf(IMAGE_VERSION.toByte()) + intToBe(iterations) +
+                    salt + gcmEncrypt(key, data)
+        }
+
+        /**
+         * Decrypts a photo/thumbnail/verifier: v1 authenticated files via the header's
+         * own KDF parameters, older files via the legacy CBC path. Throws on wrong
+         * password or tampering (v1) or padding failure (legacy).
+         */
+        fun decryptImage(data: ByteArray, password: String): ByteArray {
+            if (!isAuthenticatedImage(data)) {
+                return decrypt(data, password)
+            }
+            val itersStart = IMAGE_MAGIC.size + 1
+            val saltStart = itersStart + 4
+            val blobStart = saltStart + IMAGE_SALT_BYTES
+            require(data.size >= blobStart) { "Truncated image header" }
+            val iterations = readIntBe(data, itersStart)
+            require(iterations in 1..MAX_ITERATIONS) { "Bad iteration count: $iterations" }
+            val salt = data.copyOfRange(saltStart, blobStart)
+            val key = deriveKeySha256(password, salt, iterations)
+            return gcmDecrypt(key, data, blobStart)
+        }
+
+        private fun intToBe(value: Int): ByteArray = byteArrayOf(
+            (value ushr 24).toByte(),
+            (value ushr 16).toByte(),
+            (value ushr 8).toByte(),
+            value.toByte(),
+        )
+
+        private fun readIntBe(bytes: ByteArray, offset: Int): Int =
+            ((bytes[offset].toInt() and 0xFF) shl 24) or
+                ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+                ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+                (bytes[offset + 3].toInt() and 0xFF)
+
+        // ---------------------------------------------------------------------------------
+        // AES/CBC — legacy photos & thumbnails (.enc): [salt(16)][iv(16)][ciphertext]
         // ---------------------------------------------------------------------------------
 
         // Initialize the cipher with the given mode, password, salt, and IV

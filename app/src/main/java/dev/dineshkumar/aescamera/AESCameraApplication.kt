@@ -12,6 +12,9 @@ import java.io.File
 
 class AESCameraApplication : Application() {
     var keyLiveData: MutableLiveData<String?> = MutableLiveData()
+    // Setting a non-null key runs the expensive vault unlock (a PBKDF2 verifier check
+    // per vault scanned); callers must do it off the main thread — hence postValue for
+    // the LiveData notification. Setting null (lock) is cheap.
     var key: String? = null
         set(value) {
             field = value
@@ -19,15 +22,13 @@ class AESCameraApplication : Application() {
             if (value == null) {
                 EncryptionUtils.clearKeyCache()
                 outputDirectory = null
-                keyLiveData.value = value
+                keyLiveData.postValue(null)
                 return
             }
 
-            // Locating the vault test-decrypts each vault's verifier (a PBKDF2
-            // derivation apiece), so unlocking costs ~100 ms per existing vault.
             outputDirectory = VaultUtils.openVault(value, this)
 
-            keyLiveData.value = value
+            keyLiveData.postValue(value)
         }
     var outputDirectory: File? = null
         private set(value) {

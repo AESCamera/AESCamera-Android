@@ -422,7 +422,7 @@ class MainActivity : ProtectedBaseActivity() {
             try {
                 outputDirectory.mkdirs()
                 val encryptedFile = File(outputDirectory, fileName)
-                EncryptionUtils.encrypt(pictureResult.data, key).let {
+                EncryptionUtils.encryptImage(pictureResult.data, key).let {
                     encryptedFile.writeBytes(it)
                 }
             } catch (e: Exception) {

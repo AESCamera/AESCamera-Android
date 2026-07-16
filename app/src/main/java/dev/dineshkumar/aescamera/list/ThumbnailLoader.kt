@@ -19,7 +19,7 @@ import java.util.LinkedList
 class ThumbnailLoader(
     private val context: Context,
     private val thumbnailDirectory: File?,
-    private val encryptionKey: String?
+    private val key: String?
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val loadingQueue = LinkedList<Pair<FileAdapter.FileViewHolder, File>>()
@@ -63,8 +63,8 @@ class ThumbnailLoader(
 
         currentJob = GlobalScope.launch(Dispatchers.IO) {
             try {
-                val key = encryptionKey ?: return@launch
-                val decryptedBytes = EncryptionUtils.decrypt(thumbnailFile.readBytes(), key)
+                val key = key ?: return@launch
+                val decryptedBytes = EncryptionUtils.decryptImage(thumbnailFile.readBytes(), key)
                 val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 withContext(Dispatchers.Main) {
                     if (!isPaused && holder.bindingAdapterPosition != RecyclerView.NO_POSITION) {

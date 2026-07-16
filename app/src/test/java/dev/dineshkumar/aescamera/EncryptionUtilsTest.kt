@@ -4,9 +4,12 @@ import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import kotlin.random.Random
 
@@ -20,6 +23,68 @@ class EncryptionUtilsTest {
         val encrypted = EncryptionUtils.encrypt(plaintext, password)
         val decrypted = EncryptionUtils.decrypt(encrypted, password)
         assertArrayEquals(plaintext, decrypted)
+    }
+
+    @Test
+    fun authenticatedImageRoundTrip() {
+        val plaintext = Random.nextBytes(100_000)
+        val encrypted = EncryptionUtils.encryptImage(plaintext, password)
+
+        assertTrue(EncryptionUtils.isAuthenticatedImage(encrypted))
+        // Header: magic "AESP" + version 1.
+        assertArrayEquals(
+            byteArrayOf(0x41, 0x45, 0x53, 0x50, 1),
+            encrypted.sliceArray(0 until 5)
+        )
+
+        assertArrayEquals(plaintext, EncryptionUtils.decryptImage(encrypted, password))
+    }
+
+    @Test
+    fun authenticatedImageIsSelfContained() {
+        // The iteration count is read from the header, not assumed by the caller —
+        // a thumbnail (lower cost) decrypts through the same call as a photo.
+        val plaintext = Random.nextBytes(1_000)
+        val encrypted = EncryptionUtils.encryptImage(
+            plaintext, password, EncryptionUtils.THUMBNAIL_ITERATIONS
+        )
+        assertArrayEquals(plaintext, EncryptionUtils.decryptImage(encrypted, password))
+    }
+
+    @Test
+    fun authenticatedImageRejectsWrongPassword() {
+        val encrypted = EncryptionUtils.encryptImage(Random.nextBytes(1_000), password)
+        assertThrows(AEADBadTagException::class.java) {
+            EncryptionUtils.decryptImage(encrypted, "wrong-password")
+        }
+    }
+
+    @Test
+    fun authenticatedImageRejectsTampering() {
+        val encrypted = EncryptionUtils.encryptImage(Random.nextBytes(1_000), password)
+        encrypted[encrypted.size / 2] = (encrypted[encrypted.size / 2] + 1).toByte()
+        assertThrows(AEADBadTagException::class.java) {
+            EncryptionUtils.decryptImage(encrypted, password)
+        }
+    }
+
+    @Test
+    fun authenticatedImageRejectsAbsurdIterationCount() {
+        // A crafted header must not be able to stall the app with a huge PBKDF2 cost.
+        val encrypted = EncryptionUtils.encryptImage(Random.nextBytes(100), password)
+        for (i in 5..8) encrypted[i] = 0x7F // iterations ≈ 2^31
+        assertThrows(IllegalArgumentException::class.java) {
+            EncryptionUtils.decryptImage(encrypted, password)
+        }
+    }
+
+    @Test
+    fun legacyCbcImageDecryptsThroughDecryptImage() {
+        val plaintext = Random.nextBytes(50_000)
+        val legacyEncrypted = EncryptionUtils.encrypt(plaintext, password)
+
+        assertFalse(EncryptionUtils.isAuthenticatedImage(legacyEncrypted))
+        assertArrayEquals(plaintext, EncryptionUtils.decryptImage(legacyEncrypted, password))
     }
 
     @Test

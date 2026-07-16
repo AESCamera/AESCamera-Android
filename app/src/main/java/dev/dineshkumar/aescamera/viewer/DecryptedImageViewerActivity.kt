@@ -240,7 +240,7 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
                 inputStream.close()
 
                 val decryptedBytes = runCatching {
-                    EncryptionUtils.decrypt(encryptedBytes, key)
+                    EncryptionUtils.decryptImage(encryptedBytes, key)
                 }.getOrElse {
                     Log.e(TAG, "Error: ${it.message}", it)
                     withContext(Dispatchers.Main) {
@@ -329,8 +329,10 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
         }
 
         // The vault copy is ciphertext; the thumbnail needs the decrypted image.
+        // decryptImage handles both the authenticated format and legacy CBC files, so
+        // imports work regardless of which build produced the shared file.
         try {
-            val decryptedBytes = EncryptionUtils.decrypt(outputFile.readBytes(), key)
+            val decryptedBytes = EncryptionUtils.decryptImage(outputFile.readBytes(), key)
             ThumbnailUtils.createImageThumbnail(app, fileName, decryptedBytes)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create thumbnail for imported file! ${e.message}", e)

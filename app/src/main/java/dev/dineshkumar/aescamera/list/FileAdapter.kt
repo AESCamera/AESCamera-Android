@@ -19,7 +19,6 @@ import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
 import dev.dineshkumar.aescamera.databinding.ItemFileBinding
-import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.viewer.DecryptedImageViewerActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -30,13 +29,13 @@ import java.io.File
 class FileAdapter(
     private val context: Context,
     private val thumbnailDirectory: File?,
-    var encryptionKey: String?,
+    var key: String?,
     private val onItemClick: (File, ArrayList<File>) -> Unit,
     private val onSelectionChanged: (Int) -> Unit
 ) : ListAdapter<File, FileAdapter.FileViewHolder>(FileDiffCallback()) {
 
     private val selectedItems = mutableSetOf<Int>()
-    private val thumbnailLoader = ThumbnailLoader(context, thumbnailDirectory, encryptionKey)
+    private val thumbnailLoader = ThumbnailLoader(context, thumbnailDirectory, key)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FileViewHolder {
         val binding = ItemFileBinding.inflate(LayoutInflater.from(parent.context), parent, false)

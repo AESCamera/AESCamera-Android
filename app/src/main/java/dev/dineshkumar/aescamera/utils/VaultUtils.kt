@@ -11,18 +11,23 @@ import java.security.SecureRandom
  *
  * Vault directories have random names that carry no information about the key. Each
  * vault contains a hidden verifier file ([VERIFIER_FILE_NAME]) — a fixed magic string
- * encrypted with the vault's key by the normal PBKDF2+AES scheme. The vault for a key is
- * found by test-decrypting verifiers, so guessing a key from the directory tree costs a
- * full PBKDF2 derivation per guess, the same as attacking an encrypted media file.
+ * sealed with the key in the authenticated image format (PBKDF2-SHA256 + AES-GCM,
+ * [VERIFIER_ITERATIONS]). The vault for a key is found by test-opening verifiers, so
+ * guessing a key from the directory tree costs a full PBKDF2 derivation per guess, the
+ * same as attacking an encrypted media file.
  *
- * Vault names used to be MD5(key), which a GPU can brute-force offline at billions of
- * guesses per second; legacy vaults are adopted (verifier written, directory renamed)
- * the first time their key is entered.
+ * Older layouts are upgraded on first unlock: a pre-authentication AES/CBC verifier is
+ * rewritten in the sealed format, and legacy MD5(key)-named directories (GPU
+ * brute-forceable) are adopted and renamed.
  */
 object VaultUtils {
     private const val TAG = "VaultUtils"
     private const val VERIFIER_FILE_NAME = ".vault"
     private val VERIFIER_MAGIC = "AESCameraVault:v1".toByteArray(Charsets.UTF_8)
+
+    // PBKDF2 cost of the verifier — the gate an attacker must pass per password guess.
+    // Paid once per vault scanned at unlock, off the main thread (dialog_unlocking).
+    private const val VERIFIER_ITERATIONS = 210_000
 
     /** Returns the vault directory for [key], creating it if none exists yet. */
     fun openVault(key: String, context: Context): File {
@@ -38,14 +43,14 @@ object VaultUtils {
 
     /** [openVault] core, separated from [Context] for unit testing. */
     fun openVault(key: String, baseDir: File): File {
-        // An existing vault whose verifier this key decrypts.
+        // An existing vault whose verifier this key opens.
         baseDir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }?.forEach { dir ->
-            if (verifierMatches(File(dir, VERIFIER_FILE_NAME), key)) {
+            if (verifierMatchesOrUpgrades(File(dir, VERIFIER_FILE_NAME), dir, key)) {
                 return renameIfLegacy(dir, key)
             }
         }
 
-        // A legacy vault named MD5(key): adopt it.
+        // A legacy vault named MD5(key) with no verifier at all: adopt it.
         val legacyDir = File(baseDir, CommonUtils.getKeyDigest(key))
         if (legacyDir.isDirectory) {
             Log.i(TAG, "Adopting legacy MD5-named vault")
@@ -59,22 +64,37 @@ object VaultUtils {
         return newDir
     }
 
-    private fun verifierMatches(verifier: File, key: String): Boolean {
+    /**
+     * True if [verifier] belongs to [key]. A matching legacy AES/CBC verifier is
+     * rewritten in the sealed format in place so later unlocks authenticate properly.
+     */
+    private fun verifierMatchesOrUpgrades(verifier: File, dir: File, key: String): Boolean {
         if (!verifier.isFile) {
             return false
         }
-        return try {
-            EncryptionUtils.decrypt(verifier.readBytes(), key).contentEquals(VERIFIER_MAGIC)
+        val bytes = try {
+            verifier.readBytes()
         } catch (e: Exception) {
-            false // wrong key (bad padding) or unreadable/corrupt verifier
+            Log.e(TAG, "Unreadable verifier in ${dir.name}", e)
+            return false
         }
+
+        val isLegacy = !EncryptionUtils.isAuthenticatedImage(bytes)
+        val matches = try {
+            EncryptionUtils.decryptImage(bytes, key).contentEquals(VERIFIER_MAGIC)
+        } catch (e: Exception) {
+            false // wrong key (bad tag / bad padding) or corrupt verifier
+        }
+        if (matches && isLegacy) {
+            Log.i(TAG, "Upgrading legacy CBC verifier to the authenticated format")
+            writeVerifier(dir, key)
+        }
+        return matches
     }
 
     private fun writeVerifier(dir: File, key: String) {
-        val verifier = File(dir, VERIFIER_FILE_NAME)
-        if (!verifier.exists()) {
-            verifier.writeBytes(EncryptionUtils.encrypt(VERIFIER_MAGIC, key))
-        }
+        val sealed = EncryptionUtils.encryptImage(VERIFIER_MAGIC, key, VERIFIER_ITERATIONS)
+        File(dir, VERIFIER_FILE_NAME).writeBytes(sealed)
     }
 
     /**

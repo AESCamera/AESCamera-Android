@@ -126,7 +126,7 @@ class FilesListActivity : ProtectedBaseActivity() {
 
         optionsMenu?.findItem(R.id.action_select_all)?.isVisible = files.isNotEmpty()
 
-        adapter.encryptionKey = app.key
+        adapter.key = app.key
         adapter.clearSelection()
         adapter.submitList(files)
     }

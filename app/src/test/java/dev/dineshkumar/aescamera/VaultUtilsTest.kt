@@ -1,6 +1,7 @@
 package dev.dineshkumar.aescamera
 
 import dev.dineshkumar.aescamera.utils.CommonUtils
+import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.VaultUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,5 +58,27 @@ class VaultUtilsTest {
 
         // Reopening finds the migrated vault instead of creating a new one.
         assertEquals(vault, VaultUtils.openVault("test", base))
+    }
+
+    @Test
+    fun newVerifierUsesAuthenticatedFormat() {
+        val vault = VaultUtils.openVault("some key", tempFolder.root)
+
+        assertTrue(EncryptionUtils.isAuthenticatedImage(File(vault, ".vault").readBytes()))
+    }
+
+    @Test
+    fun legacyCbcVerifierIsAcceptedAndUpgraded() {
+        val base = tempFolder.root
+        val dir = File(base, "0123456789abcdef0123456789abcdef").apply { mkdirs() }
+        val magic = "AESCameraVault:v1".toByteArray(Charsets.UTF_8)
+        File(dir, ".vault").writeBytes(EncryptionUtils.encrypt(magic, "legacy key"))
+
+        val vault = VaultUtils.openVault("legacy key", base)
+
+        assertEquals(dir, vault)
+        // The verifier was rewritten in the authenticated format and still opens.
+        assertTrue(EncryptionUtils.isAuthenticatedImage(File(vault, ".vault").readBytes()))
+        assertEquals(vault, VaultUtils.openVault("legacy key", base))
     }
 }

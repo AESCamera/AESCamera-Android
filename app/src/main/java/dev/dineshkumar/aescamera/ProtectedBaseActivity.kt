@@ -2,6 +2,7 @@ package dev.dineshkumar.aescamera
 
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -71,7 +72,7 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
 
                 val password = passwordEditText.text.toString()
                 if (password.isNotEmpty()) {
-                    (application as AESCameraApplication).key = password
+                    unlock(password)
                 } else {
                     showPasswordDialog()
                 }
@@ -79,5 +80,36 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
 
         dialogOpen = true
         builder.create().show()
+    }
+
+    /**
+     * Derives the vault master key (expensive PBKDF2) off the main thread behind a
+     * non-cancelable spinner, then sets the key on the application.
+     */
+    private fun unlock(password: String) {
+        val progress = AlertDialog.Builder(this)
+            .setView(LayoutInflater.from(this).inflate(R.layout.dialog_unlocking, null))
+            .setCancelable(false)
+            .create()
+        progress.show()
+
+        Thread {
+            try {
+                (application as AESCameraApplication).key = password
+            } catch (e: Exception) {
+                Log.e(TAG, "Unlock failed: ${e.message}", e)
+            }
+            runOnUiThread {
+                runCatching { progress.dismiss() }
+                // If the key didn't take (error/empty vault), re-prompt.
+                if ((application as AESCameraApplication).key == null) {
+                    showPasswordDialog()
+                }
+            }
+        }.start()
+    }
+
+    companion object {
+        private const val TAG = "ProtectedBaseActivity"
     }
 }
