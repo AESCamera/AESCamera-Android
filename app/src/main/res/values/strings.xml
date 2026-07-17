@@ -22,6 +22,8 @@
     <string name="share_whatsapp">Share on WhatsApp</string>
 
     <string name="files_list_title">Files</string>
+    <string name="empty_vault_title">No media yet</string>
+    <string name="empty_vault_message">Photos and videos you capture will appear here.</string>
     <string name="selected_count">%1$d Selected</string>
 
     <string name="decrypted_image_viewer_title">Decrypted Image</string>

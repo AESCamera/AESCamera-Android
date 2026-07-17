@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.ContactsContract
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -111,6 +112,8 @@ class FilesListActivity : ProtectedBaseActivity() {
             }
 
         optionsMenu?.findItem(R.id.action_select_all)?.isVisible = files.isNotEmpty()
+
+        binding.emptyView.visibility = if (files.isEmpty()) View.VISIBLE else View.GONE
 
         adapter.key = app.key
         adapter.clearSelection()
