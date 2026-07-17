@@ -11,6 +11,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
@@ -32,7 +33,11 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
     private var fileUri: Uri? = null
     private var fileName: String? = null;
     private var menu: Menu? = null
-    private var uris: ArrayList<Uri>? = null
+
+    // Gallery navigation: the full ordered vault list (images + videos) and where we are
+    // in it. Null when launched externally (e.g. a shared file from another app), in
+    // which case there is a single image and no prev/next.
+    private var galleryPaths: List<String>? = null
     private var currentIndex: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,10 +49,16 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.decrypted_image_viewer_title)
 
-        fileUri = intent.data;
+        galleryPaths = intent.getStringArrayListExtra(GalleryNav.EXTRA_PATHS)
+        val paths = galleryPaths
 
-        if (fileUri == null) {
-            fileUri = if (VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        if (paths != null) {
+            // Internal gallery mode: resolve the current item from the shared list.
+            currentIndex = intent.getIntExtra(GalleryNav.EXTRA_INDEX, 0).coerceIn(paths.indices)
+            fileUri = providerUriFor(paths[currentIndex])
+        } else {
+            // External mode: a single file handed in by another app.
+            fileUri = intent.data ?: if (VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM)
             } else {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
@@ -59,21 +70,6 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
         if (fileUri != null) {
             fileName = getFileName(fileUri)
             supportActionBar?.title = fileName ?: getString(R.string.decrypted_image_viewer_title)
-
-            uris = if (intent.hasExtra("uris")) {
-                if (VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableArrayListExtra("uris")
-                } else {
-                    intent.getParcelableArrayListExtra("uris", Uri::class.java)
-                }
-            } else {
-                null
-            }
-
-            if (uris != null) {
-                currentIndex = uris!!.indexOf(fileUri)
-            }
-
             loadDecryptedImage()
         } else {
             Toast.makeText(this, getString(R.string.error_no_file_selected), Toast.LENGTH_SHORT)
@@ -91,12 +87,15 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
             (application as AESCameraApplication).key = null
         }
         binding.decryptedImageViewNext.setOnClickListener {
-            loadNextImage()
+            navigate(1)
         }
         binding.decryptedImageViewPrevious.setOnClickListener {
-            loadPreviousImage()
+            navigate(-1)
         }
     }
+
+    private fun providerUriFor(path: String): Uri =
+        FileProvider.getUriForFile(this, "${application.packageName}.provider", File(path))
 
     private fun getFileName(uri: Uri): String? {
         var result: String? = null
@@ -151,54 +150,47 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
     }
 
     private fun updateButtons() {
-        val uris = this.uris
+        val paths = galleryPaths
 
-        if (uris == null) {
+        if (paths == null || paths.size <= 1) {
             binding.decryptedImageViewNext.visibility = View.GONE
             binding.decryptedImageViewPrevious.visibility = View.GONE
             return
         }
 
-        binding.decryptedImageViewNext.visibility = View.VISIBLE
-        binding.decryptedImageViewPrevious.visibility = View.VISIBLE
-
-        binding.decryptedImageViewNext.isEnabled = currentIndex + 1 < uris.size
-        binding.decryptedImageViewPrevious.isEnabled = currentIndex - 1 >= 0
+        setNavButton(binding.decryptedImageViewPrevious, currentIndex > 0)
+        setNavButton(binding.decryptedImageViewNext, currentIndex < paths.size - 1)
     }
 
-    private fun loadNextImage() {
-        val uris = this.uris ?: return
+    /** Dim-and-disable at the ends of the list, matching the player's skip controls. */
+    private fun setNavButton(button: View, enabled: Boolean) {
+        button.visibility = View.VISIBLE
+        button.isEnabled = enabled
+        button.alpha = if (enabled) 1f else 0.3f
+    }
 
-        if (currentIndex + 1 >= uris.size) {
+    /**
+     * Steps [delta] items through the gallery. An image loads here; a video hands off to
+     * the player at that position, so previous/next feels continuous across both types.
+     */
+    private fun navigate(delta: Int) {
+        val paths = galleryPaths ?: return
+        val target = currentIndex + delta
+        if (target !in paths.indices) {
             return
         }
 
-        currentIndex++
-
-        fileUri = uris[currentIndex]
-        fileName = getFileName(fileUri!!)
-        supportActionBar?.title = fileName ?: getString(R.string.decrypted_image_viewer_title)
-
-        loadDecryptedImage()
-
-        updateButtons()
-    }
-
-    private fun loadPreviousImage() {
-        val uris = this.uris ?: return
-
-        if (currentIndex - 1 < 0) {
+        if (GalleryNav.isVideo(paths[target])) {
+            startActivity(GalleryNav.intentFor(this, paths, target))
+            finish()
             return
         }
 
-        currentIndex--
-
-        fileUri = uris[currentIndex]
-        fileName = getFileName(fileUri!!)
-        supportActionBar?.title = fileName ?: getString(R.string.decrypted_image_viewer_title)
-
+        currentIndex = target
+        fileUri = providerUriFor(paths[target])
+        fileName = File(paths[target]).name
+        supportActionBar?.title = fileName
         loadDecryptedImage()
-
         updateButtons()
     }
 

@@ -17,6 +17,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.lifecycle.Lifecycle
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
+import androidx.media3.ui.PlayerView
 import dev.dineshkumar.aescamera.viewer.extractor.EncvDurationReader
 import dev.dineshkumar.aescamera.viewer.extractor.PtsSeekableTsExtractor
 import dev.dineshkumar.aescamera.AESCameraApplication
@@ -39,8 +40,10 @@ import java.io.File
  * No decrypted data is ever written to disk.
  *
  * All .encv files in the same directory are loaded as a playlist (newest first, matching
- * the gallery order), so the controller's previous/next buttons navigate between
- * recordings.
+ * the gallery order). Previous/next is driven by the shared gallery buttons (see
+ * [GalleryNav]): a neighbouring video is reached by seeking within this playlist, while a
+ * neighbouring image hands off to the image viewer — so navigation is continuous across
+ * the whole vault, not just videos.
  *
  * MPEG-2 TS carries no rotation metadata, so [PtsSeekableTsExtractor] stamps the rotation
  * stored in the .encv header onto the video track's Format; the player pipeline then
@@ -55,6 +58,13 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     private var verifying = false
     private var verifiedPath: String? = null
 
+    // Gallery navigation: the full ordered vault list (images + videos), the video-only
+    // subset ExoPlayer actually holds as a playlist, and whether prev/next may show.
+    private var galleryPaths: List<String>? = null
+    private var playlistFiles: List<File> = emptyList()
+    private var navAllowed = false
+    private var controllerVisible = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -64,7 +74,10 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.decrypted_video_player_title)
 
-        val path = intent.getStringExtra(EXTRA_PATH) ?: intent.data?.path
+        galleryPaths = intent.getStringArrayListExtra(GalleryNav.EXTRA_PATHS)
+        val path = galleryPaths?.let { paths ->
+            paths[intent.getIntExtra(GalleryNav.EXTRA_INDEX, 0).coerceIn(paths.indices)]
+        } ?: intent.getStringExtra(EXTRA_PATH) ?: intent.data?.path
         val file = path?.let { File(it) }
 
         if (file == null || !file.exists()) {
@@ -75,6 +88,18 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         videoFile = file
         supportActionBar?.title = file.name
 
+        // Replace ExoPlayer's built-in previous/next (they only walk its own video
+        // playlist) with the unified gallery buttons, keeping every other control.
+        binding.playerView.setShowNextButton(false)
+        binding.playerView.setShowPreviousButton(false)
+        // Our overlay buttons live with the player controls: shown/hidden together.
+        binding.playerView.setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+                controllerVisible = visibility == View.VISIBLE
+                updateNavButtons()
+            }
+        )
+
         (application as AESCameraApplication).keyLiveData.observe(this) {
             // Key changed (entered or cleared): rebuild the player with the new key.
             releasePlayer()
@@ -84,6 +109,8 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         binding.videoPlayerResetKey.setOnClickListener {
             (application as AESCameraApplication).key = null
         }
+        binding.videoPlayerPrevious.setOnClickListener { navigate(-1) }
+        binding.videoPlayerNext.setOnClickListener { navigate(1) }
     }
 
     override fun onStart() {
@@ -156,6 +183,7 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
     private fun buildPlayer(file: File, key: String) {
         val playlist = buildPlaylist(file)
+        playlistFiles = playlist
         val startIndex =
             playlist.indexOfFirst { it.absolutePath == file.absolutePath }.coerceAtLeast(0)
 
@@ -219,6 +247,7 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
                     ?: return
                 videoFile = itemFile
                 supportActionBar?.title = itemFile.name
+                updateNavButtons()
                 // Playlist navigation reaches files the initial check didn't cover.
                 if (itemFile.absolutePath != verifiedPath) {
                     verifyInBackground(itemFile, key)
@@ -236,6 +265,58 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         exoPlayer.playWhenReady = true
 
         player = exoPlayer
+        navAllowed = true
+        updateNavButtons()
+    }
+
+    /**
+     * Steps [delta] items through the gallery. A video neighbour is reached by seeking
+     * within ExoPlayer's playlist (no reload); an image neighbour hands off to the image
+     * viewer at that position, so previous/next feels continuous across both types.
+     */
+    private fun navigate(delta: Int) {
+        val paths = galleryPaths ?: return
+        val curIdx = paths.indexOf(videoFile?.absolutePath)
+        if (curIdx < 0) return
+        val target = curIdx + delta
+        if (target !in paths.indices) return
+
+        val targetPath = paths[target]
+        if (GalleryNav.isVideo(targetPath)) {
+            val playlistIndex = playlistFiles.indexOfFirst { it.absolutePath == targetPath }
+            val activePlayer = player
+            if (playlistIndex >= 0 && activePlayer != null) {
+                activePlayer.seekToDefaultPosition(playlistIndex)
+                activePlayer.playWhenReady = true
+            }
+        } else {
+            startActivity(GalleryNav.intentFor(this, paths, target))
+            finish()
+        }
+    }
+
+    /** Shows the prev/next buttons alongside the controls, dimmed at the list ends. */
+    private fun updateNavButtons() {
+        val paths = galleryPaths
+        val prev = binding.videoPlayerPrevious
+        val next = binding.videoPlayerNext
+
+        if (!navAllowed || !controllerVisible || paths == null || paths.size <= 1) {
+            prev.visibility = View.GONE
+            next.visibility = View.GONE
+            return
+        }
+
+        val idx = paths.indexOf(videoFile?.absolutePath)
+        setNavButton(prev, idx > 0)
+        setNavButton(next, idx in 0 until paths.size - 1)
+    }
+
+    /** Dim-and-disable at the ends of the list, matching the image viewer. */
+    private fun setNavButton(button: View, enabled: Boolean) {
+        button.visibility = View.VISIBLE
+        button.isEnabled = enabled
+        button.alpha = if (enabled) 1f else 0.3f
     }
 
     /**
@@ -276,6 +357,8 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         binding.playerView.player = null
         player?.release()
         player = null
+        navAllowed = false
+        updateNavButtons()
     }
 
     private fun showError(message: String, showResetKey: Boolean = false) {
@@ -283,6 +366,8 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         binding.videoPlayerError.visibility = View.VISIBLE
         binding.videoPlayerResetKey.visibility = if (showResetKey) View.VISIBLE else View.GONE
         binding.playerView.visibility = View.INVISIBLE
+        navAllowed = false
+        updateNavButtons()
     }
 
     private fun clearError() {

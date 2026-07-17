@@ -17,8 +17,7 @@ import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
-import dev.dineshkumar.aescamera.viewer.DecryptedImageViewerActivity
-import dev.dineshkumar.aescamera.viewer.DecryptedVideoPlayerActivity
+import dev.dineshkumar.aescamera.viewer.GalleryNav
 import java.io.File
 
 
@@ -72,26 +71,12 @@ class FilesListActivity : ProtectedBaseActivity() {
     }
 
     private fun onItemClick(file: File, files: ArrayList<File>) {
-        if (file.extension == "encv") {
-            val intent = Intent(this, DecryptedVideoPlayerActivity::class.java)
-            intent.putExtra(DecryptedVideoPlayerActivity.EXTRA_PATH, file.absolutePath)
-            startActivity(intent)
-            return
-        }
-
-        val intent = Intent(this, DecryptedImageViewerActivity::class.java)
-        val uri = FileProvider.getUriForFile(this, application.packageName + ".provider", file)
-        // Previous/next navigation in the image viewer only makes sense across images.
-        val uris = ArrayList<Uri>(files.filter { it.extension == "enc" }.map { imageFile ->
-            FileProvider.getUriForFile(
-                this,
-                application.packageName + ".provider",
-                imageFile
-            )
-        })
-        intent.data = uri
-        intent.putParcelableArrayListExtra("uris", uris)
-        startActivity(intent)
+        // Previous/next navigates the whole gallery — images and videos in one ordered
+        // list — so both viewers receive the same list and hand off to each other at
+        // media-type boundaries (see GalleryNav).
+        val paths = files.map { it.absolutePath }
+        val index = files.indexOf(file).coerceAtLeast(0)
+        startActivity(GalleryNav.intentFor(this, paths, index))
     }
 
     private fun onSelectionChanged(selectedCount: Int) {

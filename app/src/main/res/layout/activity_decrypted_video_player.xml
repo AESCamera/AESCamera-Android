@@ -20,6 +20,34 @@
         app:show_buffering="when_playing"
         app:surface_type="texture_view" />
 
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/video_player_previous"
+        style="@style/GalleryNavButton"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@string/previous_item"
+        android:visibility="gone"
+        app:faIcon="@string/fa_backward_step"
+        app:faStyle="solid"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/video_player_next"
+        style="@style/GalleryNavButton"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="@string/next_item"
+        android:visibility="gone"
+        app:faIcon="@string/fa_forward_step"
+        app:faStyle="solid"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/video_player_error"
         android:layout_width="wrap_content"
