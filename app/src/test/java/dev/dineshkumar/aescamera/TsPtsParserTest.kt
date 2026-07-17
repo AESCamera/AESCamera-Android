@@ -77,9 +77,14 @@ class TsPtsParserTest {
         } + pesPacket(990_000)
 
         val file = File.createTempFile("encv-duration", ".encv").apply { deleteOnExit() }
-        EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
-            .use { it.write(stream) }
+        val out = EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
+        out.use { it.write(stream) }
 
+        assertEquals(10_000_000L, EncvDurationReader.readDurationUs(file, password))
+
+        // Finalizing appends the authentication trailer; it must not be mistaken for
+        // TS data (which would corrupt the last-PTS scan).
+        out.finish(0)
         assertEquals(10_000_000L, EncvDurationReader.readDurationUs(file, password))
     }
 }

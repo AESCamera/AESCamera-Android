@@ -4,14 +4,29 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.io.RandomAccessFile
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.CipherOutputStream
+import javax.crypto.Mac
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+
+/** Outcome of an .encv integrity check (see EncryptionUtils.verifyEncv). */
+enum class EncvVerification {
+    /** v3 trailer present and correct: the file is authentic and complete. */
+    VERIFIED,
+
+    /** No trailer to check: a v2 file, or a v3 recording that died before finalizing. */
+    UNVERIFIED,
+
+    /** Trailer expected but wrong: tampered/corrupt file — or the wrong password. */
+    FAILED
+}
 
 @Suppress("SpellCheckingInspection")
 internal class EncryptionUtils {
@@ -269,8 +284,11 @@ internal class EncryptionUtils {
 
         /**
          * Opens a write-only stream that encrypts everything written to it into
-         * [outputFile] using the .encv v2 layout: the plaintext [header], then random
-         * salt + iv, then AES/CTR ciphertext. Close the returned stream to finalize.
+         * [outputFile]: the plaintext [header], then random salt + iv, then AES/CTR
+         * ciphertext. An HMAC accumulates over the ciphertext as it is written; close
+         * the stream, then call [EncryptedVideoOutput.finish] to patch the final header
+         * and append the v3 authentication trailer (skipping finish leaves a valid,
+         * unverified file — the crash case).
          *
          * Used as the sink of the video recording pipe drain — plaintext never
          * touches disk.
@@ -279,11 +297,12 @@ internal class EncryptionUtils {
             outputFile: File,
             password: String,
             header: EncvHeader
-        ): OutputStream {
+        ): EncryptedVideoOutput {
             val salt = ByteArray(16).apply { SecureRandom().nextBytes(this) }
             val iv = ByteArray(16).apply { SecureRandom().nextBytes(this) }
 
             val cipher = ctrCipherAt(Cipher.ENCRYPT_MODE, password, salt, iv)
+            val mac = videoMac(password, salt)
 
             val fileStream = FileOutputStream(outputFile)
             try {
@@ -295,7 +314,87 @@ internal class EncryptionUtils {
                 throw e
             }
 
-            return CipherOutputStream(fileStream, cipher)
+            // Order matters: the MAC tee sits below the cipher so it sees ciphertext
+            // (encrypt-then-MAC); the prefix above was written before the tee and is
+            // fed into the MAC at finish() instead, once its final contents are known.
+            val cipherStream = CipherOutputStream(MacOutputStream(fileStream, mac), cipher)
+            return EncryptedVideoOutput(outputFile, header, salt, iv, mac, cipherStream)
         }
+
+        /**
+         * Integrity-checks an .encv file against its v3 trailer: HMAC-SHA256 over
+         * ciphertext ‖ header ‖ salt ‖ iv, compared in constant time. Reads the whole
+         * file sequentially (~a second per few hundred MB) — call off the main thread.
+         */
+        fun verifyEncv(file: File, password: String): EncvVerification {
+            try {
+                RandomAccessFile(file, "r").use { raf ->
+                    val headerBytes = ByteArray(EncvHeader.SIZE)
+                    val salt = ByteArray(EncvHeader.SALT_SIZE)
+                    val iv = ByteArray(EncvHeader.IV_SIZE)
+                    raf.readFully(headerBytes)
+                    raf.readFully(salt)
+                    raf.readFully(iv)
+                    val header = EncvHeader.fromBytes(headerBytes)
+
+                    if (!header.isAuthenticated) {
+                        return EncvVerification.UNVERIFIED
+                    }
+
+                    val trailerStart = raf.length() - EncvHeader.TRAILER_SIZE
+                    if (trailerStart < EncvHeader.PREFIX_SIZE) {
+                        return EncvVerification.FAILED
+                    }
+
+                    val mac = videoMac(password, salt)
+                    val buffer = ByteArray(256 * 1024)
+                    var remaining = trailerStart - EncvHeader.PREFIX_SIZE
+                    raf.seek(EncvHeader.PREFIX_SIZE.toLong())
+                    while (remaining > 0) {
+                        val read = raf.read(buffer, 0, minOf(remaining, buffer.size.toLong()).toInt())
+                        if (read < 0) return EncvVerification.FAILED
+                        mac.update(buffer, 0, read)
+                        remaining -= read
+                    }
+                    mac.update(headerBytes)
+                    mac.update(salt)
+                    mac.update(iv)
+                    val expected = mac.doFinal()
+
+                    val trailer = ByteArray(EncvHeader.TRAILER_SIZE)
+                    raf.seek(trailerStart)
+                    raf.readFully(trailer)
+
+                    val magicOk = trailer.sliceArray(0 until EncvHeader.TRAILER_MAGIC.size)
+                        .contentEquals(EncvHeader.TRAILER_MAGIC)
+                    val macOk = MessageDigest.isEqual(
+                        expected,
+                        trailer.sliceArray(EncvHeader.TRAILER_MAGIC.size until EncvHeader.TRAILER_SIZE)
+                    )
+                    return if (magicOk && macOk) EncvVerification.VERIFIED
+                    else EncvVerification.FAILED
+                }
+            } catch (e: Exception) {
+                // Unreadable / truncated below the prefix / not an .encv at all.
+                return EncvVerification.FAILED
+            }
+        }
+
+        /**
+         * The trailer's HMAC key, derived from the file's CTR key with a fixed info
+         * string (one HMAC block — effectively HKDF-expand) so the encryption and
+         * authentication keys stay domain-separated.
+         */
+        private fun videoMac(password: String, salt: ByteArray): Mac {
+            val fileKey = deriveKey(password, salt)
+            val kdf = Mac.getInstance("HmacSHA256")
+            kdf.init(SecretKeySpec(fileKey.encoded, "HmacSHA256"))
+            val macKey = kdf.doFinal(VIDEO_MAC_INFO)
+            return Mac.getInstance("HmacSHA256").apply {
+                init(SecretKeySpec(macKey, "HmacSHA256"))
+            }
+        }
+
+        private val VIDEO_MAC_INFO = "AESCamera encv v3 mac".toByteArray(Charsets.US_ASCII)
     }
 }

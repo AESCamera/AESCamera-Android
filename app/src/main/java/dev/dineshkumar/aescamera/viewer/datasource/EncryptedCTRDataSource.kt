@@ -15,7 +15,7 @@ import javax.crypto.Cipher
 import kotlin.math.min
 
 /**
- * Media3 DataSource that decrypts .encv v2 files (AES/CTR/NoPadding) on the fly.
+ * Media3 DataSource that decrypts .encv files (AES/CTR/NoPadding, v2/v3) on the fly.
  *
  * The file layout is [EncvHeader.SIZE header][salt][iv][ciphertext] (see [EncvHeader]).
  * Positions in the [DataSpec] refer to plaintext offsets; because CTR allows O(1) random
@@ -51,9 +51,10 @@ class EncryptedCTRDataSource(private val password: String) : BaseDataSource(fals
             raf.readFully(headerBytes)
             raf.readFully(salt)
             raf.readFully(iv)
-            EncvHeader.fromBytes(headerBytes) // validates magic/version
+            val header = EncvHeader.fromBytes(headerBytes) // validates magic/version
 
-            val totalPlaintext = raf.length() - EncvHeader.PREFIX_SIZE
+            // The v3 authentication trailer sits after the ciphertext; it is not media.
+            val totalPlaintext = raf.length() - EncvHeader.PREFIX_SIZE - header.trailerSize
             if (dataSpec.position > totalPlaintext) {
                 throw DataSourceException(
                     androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE

@@ -2,6 +2,7 @@ package dev.dineshkumar.aescamera
 
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
+import dev.dineshkumar.aescamera.utils.EncvVerification
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -170,22 +171,134 @@ class EncryptionUtilsTest {
     }
 
     @Test
-    fun patchRotationRewritesHeaderOnly() {
+    fun finishPatchesHeaderAndAppendsTrailerOnly() {
         val plaintext = Random.nextBytes(10_000)
         val file = File.createTempFile("encv-rot", ".encv").apply { deleteOnExit() }
 
-        EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
-            .use { it.write(plaintext) }
+        val out = EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
+        out.use { it.write(plaintext) }
         val before = file.readBytes()
 
-        EncvHeader.patchRotation(file, 270)
+        out.finish(270)
         val after = file.readBytes()
 
-        assertEquals(270, EncvHeader.fromBytes(after).rotationDegrees)
-        // Everything except the rotation byte is untouched
+        assertEquals(before.size + EncvHeader.TRAILER_SIZE, after.size)
+        val header = EncvHeader.fromBytes(after)
+        assertEquals(270, header.rotationDegrees)
+        assertTrue(header.isAuthenticated)
+        // The ciphertext (and salt/iv) is untouched — only the header changed and the
+        // trailer was appended.
         assertArrayEquals(
-            before.filterIndexed { i, _ -> i != 6 }.toByteArray(),
-            after.filterIndexed { i, _ -> i != 6 }.toByteArray()
+            before.sliceArray(EncvHeader.SIZE until before.size),
+            after.sliceArray(EncvHeader.SIZE until before.size)
+        )
+    }
+
+    private fun writeFinishedVideo(file: File, plaintext: ByteArray, rotation: Int = 90) {
+        val out = EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
+        out.use { it.write(plaintext) }
+        out.finish(rotation)
+    }
+
+    @Test
+    fun finishedVideoVerifies() {
+        val plaintext = Random.nextBytes(100_000)
+        val file = File.createTempFile("encv-verify", ".encv").apply { deleteOnExit() }
+        writeFinishedVideo(file, plaintext)
+
+        assertEquals(EncvVerification.VERIFIED, EncryptionUtils.verifyEncv(file, password))
+
+        // The ciphertext region (trailer excluded) still decrypts to the plaintext.
+        val bytes = file.readBytes()
+        val salt = bytes.sliceArray(16 until 32)
+        val iv = bytes.sliceArray(32 until 48)
+        val ciphertext =
+            bytes.sliceArray(EncvHeader.PREFIX_SIZE until bytes.size - EncvHeader.TRAILER_SIZE)
+        val cipher = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv)
+        assertArrayEquals(plaintext, cipher.doFinal(ciphertext))
+    }
+
+    @Test
+    fun verifyDetectsTamperedCiphertext() {
+        val file = File.createTempFile("encv-tamper", ".encv").apply { deleteOnExit() }
+        writeFinishedVideo(file, Random.nextBytes(10_000))
+
+        val bytes = file.readBytes()
+        bytes[EncvHeader.PREFIX_SIZE + 5000] = (bytes[EncvHeader.PREFIX_SIZE + 5000] + 1).toByte()
+        file.writeBytes(bytes)
+
+        assertEquals(EncvVerification.FAILED, EncryptionUtils.verifyEncv(file, password))
+    }
+
+    @Test
+    fun verifyDetectsTamperedHeader() {
+        val file = File.createTempFile("encv-tamper-hdr", ".encv").apply { deleteOnExit() }
+        writeFinishedVideo(file, Random.nextBytes(10_000), rotation = 270)
+
+        val bytes = file.readBytes()
+        bytes[6] = 0 // flip rotation 270 -> 0: presentation metadata is covered too
+        file.writeBytes(bytes)
+
+        assertEquals(EncvVerification.FAILED, EncryptionUtils.verifyEncv(file, password))
+    }
+
+    @Test
+    fun verifyDetectsStrippedTrailer() {
+        val file = File.createTempFile("encv-strip", ".encv").apply { deleteOnExit() }
+        writeFinishedVideo(file, Random.nextBytes(10_000))
+
+        val bytes = file.readBytes()
+        file.writeBytes(bytes.sliceArray(0 until bytes.size - EncvHeader.TRAILER_SIZE))
+
+        // The header's authenticated flag promises a trailer; its absence is tampering.
+        assertEquals(EncvVerification.FAILED, EncryptionUtils.verifyEncv(file, password))
+    }
+
+    @Test
+    fun verifyRejectsWrongPassword() {
+        val file = File.createTempFile("encv-wrongpw", ".encv").apply { deleteOnExit() }
+        writeFinishedVideo(file, Random.nextBytes(10_000))
+
+        assertEquals(
+            EncvVerification.FAILED,
+            EncryptionUtils.verifyEncv(file, "wrong-password")
+        )
+    }
+
+    @Test
+    fun unfinishedRecordingIsUnverified() {
+        // A recording that dies mid-stream never gets finish(): flag clear, no trailer.
+        val file = File.createTempFile("encv-crash", ".encv").apply { deleteOnExit() }
+        EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
+            .use { it.write(Random.nextBytes(10_000)) }
+
+        assertFalse(EncvHeader.fromFile(file).isAuthenticated)
+        assertEquals(EncvVerification.UNVERIFIED, EncryptionUtils.verifyEncv(file, password))
+    }
+
+    @Test
+    fun legacyV2FileIsUnverifiedAndStillDecrypts() {
+        val plaintext = Random.nextBytes(10_000)
+        val salt = Random.nextBytes(16)
+        val iv = Random.nextBytes(16)
+        val cipher = EncryptionUtils.ctrCipherAt(Cipher.ENCRYPT_MODE, password, salt, iv)
+        val file = File.createTempFile("encv-v2", ".encv").apply { deleteOnExit() }
+        file.writeBytes(
+            EncvHeader(version = EncvHeader.VERSION_CTR).toBytes() + salt + iv +
+                cipher.doFinal(plaintext)
+        )
+
+        assertEquals(EncvVerification.UNVERIFIED, EncryptionUtils.verifyEncv(file, password))
+
+        val header = EncvHeader.fromFile(file)
+        assertEquals(EncvHeader.VERSION_CTR, header.version)
+        assertEquals(0, header.trailerSize)
+
+        val bytes = file.readBytes()
+        val decrypt = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv)
+        assertArrayEquals(
+            plaintext,
+            decrypt.doFinal(bytes.sliceArray(EncvHeader.PREFIX_SIZE until bytes.size))
         )
     }
 }

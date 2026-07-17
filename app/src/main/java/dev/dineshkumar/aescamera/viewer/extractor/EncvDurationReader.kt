@@ -28,9 +28,11 @@ object EncvDurationReader {
                 raf.readFully(header)
                 raf.readFully(salt)
                 raf.readFully(iv)
-                EncvHeader.fromBytes(header) // validates magic/version
+                val parsedHeader = EncvHeader.fromBytes(header) // validates magic/version
 
-                val totalPlaintext = raf.length() - EncvHeader.PREFIX_SIZE
+                // Exclude the v3 authentication trailer — it is not TS data.
+                val totalPlaintext =
+                    raf.length() - EncvHeader.PREFIX_SIZE - parsedHeader.trailerSize
                 if (totalPlaintext < TsPtsParser.TS_PACKET_SIZE) return C.TIME_UNSET
 
                 val headLength = minOf(totalPlaintext, SEARCH_BYTES.toLong()).toInt()

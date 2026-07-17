@@ -14,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.lifecycle.Lifecycle
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
 import dev.dineshkumar.aescamera.viewer.extractor.EncvDurationReader
@@ -22,8 +23,15 @@ import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityDecryptedVideoPlayerBinding
+import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
+import dev.dineshkumar.aescamera.utils.EncvVerification
 import dev.dineshkumar.aescamera.viewer.datasource.EncryptedCTRDataSourceFactory
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -44,6 +52,8 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     private lateinit var binding: ActivityDecryptedVideoPlayerBinding
     private var player: ExoPlayer? = null
     private var videoFile: File? = null
+    private var verifying = false
+    private var verifiedPath: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,8 +104,15 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         return if (siblings.isNullOrEmpty()) listOf(file) else siblings
     }
 
+    /**
+     * Integrity-checks [videoFile] (full-file HMAC, background thread), then builds the
+     * player. FAILED means tampering, corruption, or a wrong key — playback is refused.
+     * UNVERIFIED (a v2 file, or a recording that died before finalizing) plays as
+     * before; there is nothing to check against.
+     */
+    @kotlin.OptIn(DelicateCoroutinesApi::class)
     private fun initializePlayer() {
-        if (player != null) {
+        if (player != null || verifying) {
             return
         }
         val file = videoFile ?: return
@@ -108,6 +125,36 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
         clearError()
 
+        verifying = true
+        GlobalScope.launch(Dispatchers.IO) {
+            val result = EncryptionUtils.verifyEncv(file, key)
+            withContext(Dispatchers.Main) {
+                verifying = false
+                // The activity may have stopped (or the file changed) while verifying.
+                if (isFinishing || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    || videoFile?.absolutePath != file.absolutePath
+                ) {
+                    return@withContext
+                }
+                when (result) {
+                    EncvVerification.FAILED -> showError(
+                        getString(R.string.video_verification_failed_message),
+                        showResetKey = true
+                    )
+
+                    else -> {
+                        if (result == EncvVerification.UNVERIFIED) {
+                            Log.w(TAG, "Playing unverified recording: ${file.name}")
+                        }
+                        verifiedPath = file.absolutePath
+                        buildPlayer(file, key)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun buildPlayer(file: File, key: String) {
         val playlist = buildPlaylist(file)
         val startIndex =
             playlist.indexOfFirst { it.absolutePath == file.absolutePath }.coerceAtLeast(0)
@@ -172,6 +219,10 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
                     ?: return
                 videoFile = itemFile
                 supportActionBar?.title = itemFile.name
+                // Playlist navigation reaches files the initial check didn't cover.
+                if (itemFile.absolutePath != verifiedPath) {
+                    verifyInBackground(itemFile, key)
+                }
             }
         })
 
@@ -185,6 +236,40 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
         exoPlayer.playWhenReady = true
 
         player = exoPlayer
+    }
+
+    /**
+     * Checks a playlist item the user navigated to. The item has already started
+     * playing (Media3 offers no pre-transition hook), so a FAILED verdict stops
+     * playback within moments rather than preventing it outright.
+     */
+    @kotlin.OptIn(DelicateCoroutinesApi::class)
+    private fun verifyInBackground(file: File, key: String) {
+        GlobalScope.launch(Dispatchers.IO) {
+            val result = EncryptionUtils.verifyEncv(file, key)
+            withContext(Dispatchers.Main) {
+                // Only act if this file is still the one being played.
+                if (isFinishing || videoFile?.absolutePath != file.absolutePath) {
+                    return@withContext
+                }
+                when (result) {
+                    EncvVerification.FAILED -> {
+                        releasePlayer()
+                        showError(
+                            getString(R.string.video_verification_failed_message),
+                            showResetKey = true
+                        )
+                    }
+
+                    else -> {
+                        if (result == EncvVerification.UNVERIFIED) {
+                            Log.w(TAG, "Playing unverified recording: ${file.name}")
+                        }
+                        verifiedPath = file.absolutePath
+                    }
+                }
+            }
+        }
     }
 
     private fun releasePlayer() {

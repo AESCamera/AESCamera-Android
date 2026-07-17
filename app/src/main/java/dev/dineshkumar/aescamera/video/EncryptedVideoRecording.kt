@@ -2,11 +2,11 @@ package dev.dineshkumar.aescamera.video
 
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import dev.dineshkumar.aescamera.utils.EncryptedVideoOutput
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
 import java.io.File
 import java.io.FileDescriptor
-import java.io.OutputStream
 
 /**
  * Encrypt-while-recording pipeline for a single video recording.
@@ -21,10 +21,10 @@ import java.io.OutputStream
  */
 class EncryptedVideoRecording(val outputFile: File, password: String) {
 
-    // Writes the .encv v2 prefix (header + salt + iv) immediately. Rotation is not yet
+    // Writes the .encv prefix (header + salt + iv) immediately. Rotation is not yet
     // known (CameraView computes it when recording ends), so it starts as 0 and is
-    // patched in finish().
-    private val encryptedStream: OutputStream =
+    // patched in finish(), together with the v3 authentication trailer.
+    private val encryptedStream: EncryptedVideoOutput =
         EncryptionUtils.createEncryptedVideoOutputStream(outputFile, password, EncvHeader())
 
     private val readSide: ParcelFileDescriptor
@@ -92,9 +92,10 @@ class EncryptedVideoRecording(val outputFile: File, password: String) {
 
     /**
      * Finalizes the recording: waits for the drain thread to hit EOF, verifies data was
-     * written, and patches the actual [rotationDegrees] into the plaintext header.
-     * Blocking — call from a background thread. Throws on pipeline failure; the caller
-     * should then [abort].
+     * written, patches the actual [rotationDegrees] into the plaintext header, and
+     * appends the authentication trailer. Blocking — call from a background thread.
+     * Throws on pipeline failure; the caller should then [abort]. If the trailer never
+     * gets written (crash, error), the file stays playable but unverified.
      */
     fun finish(rotationDegrees: Int, timeoutMs: Long = 10_000) {
         closeWriteSide()
@@ -106,7 +107,7 @@ class EncryptedVideoRecording(val outputFile: File, password: String) {
         if (bytesDrained == 0L) {
             throw IllegalStateException("Recording produced no data")
         }
-        EncvHeader.patchRotation(outputFile, rotationDegrees)
+        encryptedStream.finish(rotationDegrees)
         Log.i(TAG, "Recording finished: ${outputFile.name}, $bytesDrained bytes encrypted")
     }
 
