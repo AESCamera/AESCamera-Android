@@ -11,6 +11,12 @@
     <string name="deselect_all">Deselect All</string>
     <string name="lock">Lock</string>
     <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete_confirm_title">Delete files?</string>
+    <plurals name="delete_confirm_message">
+        <item quantity="one">Delete this item permanently? This cannot be undone.</item>
+        <item quantity="other">Delete these %d items permanently? This cannot be undone.</item>
+    </plurals>
     <string name="share">Share</string>
     <string name="add_to_vault">Add to Vault</string>
     <string name="share_whatsapp">Share on WhatsApp</string>

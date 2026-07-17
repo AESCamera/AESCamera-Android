@@ -9,6 +9,7 @@ import android.provider.ContactsContract
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.database.getStringOrNull
@@ -114,6 +115,20 @@ class FilesListActivity : ProtectedBaseActivity() {
         adapter.key = app.key
         adapter.clearSelection()
         adapter.submitList(files)
+    }
+
+    private fun confirmDeleteSelectedItems() {
+        val count = adapter.getSelectedItemsCount()
+        if (count == 0) {
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.delete_confirm_title)
+            .setMessage(resources.getQuantityString(R.plurals.delete_confirm_message, count, count))
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.delete) { _, _ -> deleteSelectedItems() }
+            .show()
     }
 
     private fun deleteSelectedItems() {
@@ -241,7 +256,7 @@ class FilesListActivity : ProtectedBaseActivity() {
             }
 
             R.id.action_delete -> {
-                deleteSelectedItems()
+                confirmDeleteSelectedItems()
                 true
             }
 
