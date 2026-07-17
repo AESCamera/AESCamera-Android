@@ -60,6 +60,8 @@ class FileAdapter(
 
     inner class FileViewHolder(private val binding: ItemFileBinding) :
         RecyclerView.ViewHolder(binding.root) {
+        private var isVideo = false
+
         init {
             binding.root.setOnClickListener {
                 val files = ArrayList<File>()
@@ -79,10 +81,11 @@ class FileAdapter(
             binding.fileName.text = file.name
             binding.fileSize.text = formatFileSize(file.length())
             binding.fileCheckBox.isChecked = isSelected
+            isVideo = file.extension == "encv"
 
             showIcon(
                 context.getString(
-                    if (file.extension == "encv") R.string.fa_file_video
+                    if (isVideo) R.string.fa_file_video
                     else R.string.fa_file_image
                 )
             )
@@ -93,12 +96,16 @@ class FileAdapter(
             binding.fileThumbnail.setImageBitmap(bitmap)
             binding.fileIcon.visibility = View.GONE
             binding.fileThumbnail.visibility = View.VISIBLE
+            // The generic icon already flags a video; badge the decrypted thumbnail so a
+            // video stays distinguishable from a photo once its preview is showing.
+            binding.playBadge.visibility = if (isVideo) View.VISIBLE else View.GONE
         }
 
         fun showIcon(icon: String) {
             binding.fileIcon.setIcon(icon)
             binding.fileIcon.visibility = View.VISIBLE
             binding.fileThumbnail.visibility = View.GONE
+            binding.playBadge.visibility = View.GONE
         }
 
         private fun formatFileSize(size: Long): String {
