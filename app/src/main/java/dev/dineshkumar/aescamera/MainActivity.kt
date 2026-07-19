@@ -369,9 +369,25 @@ class MainActivity : ProtectedBaseActivity() {
     }
 
     private fun pictureShutter() {
-        // Video thumbnail snapshots must not lock the recording controls.
+        // Video thumbnail snapshots must not lock the recording controls or flash the
+        // screen — they're taken silently while a recording starts.
         if (pendingVideoThumbnailName == null) {
             disableControls()
+            flashShutter()
+        }
+    }
+
+    // A quick white flash confirms the capture; the encrypted save finishes
+    // asynchronously and only then shows a Toast, so this is the immediate feedback.
+    private fun flashShutter() {
+        binding.shutterFlash.apply {
+            alpha = 1f
+            visibility = View.VISIBLE
+            animate()
+                .alpha(0f)
+                .setDuration(180)
+                .withEndAction { visibility = View.GONE }
+                .start()
         }
     }
 

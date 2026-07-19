@@ -22,6 +22,19 @@
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toBottomOf="@id/lock_button" />
 
+    <!-- Momentary white flash over the preview at photo shutter (see MainActivity.flashShutter). -->
+    <View
+        android:id="@+id/shutter_flash"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/white"
+        android:elevation="1dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/camera"
+        app:layout_constraintLeft_toLeftOf="@id/camera"
+        app:layout_constraintRight_toRightOf="@id/camera"
+        app:layout_constraintTop_toTopOf="@id/camera" />
+
     <dev.dineshkumar.aescamera.views.FontAwesomeButton
         android:id="@+id/flash_button"
         android:layout_width="50dp"
