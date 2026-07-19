@@ -20,6 +20,15 @@
     <string name="share">Share</string>
     <string name="add_to_vault">Add to Vault</string>
     <string name="share_whatsapp">Share on WhatsApp</string>
+    <string name="share_whatsapp_title">Send to WhatsApp</string>
+    <plurals name="share_whatsapp_count">
+        <item quantity="one">Sharing %d item</item>
+        <item quantity="other">Sharing %d items</item>
+    </plurals>
+    <string name="contacts_search_hint">Search contacts</string>
+    <string name="no_contacts_found">No WhatsApp contacts found</string>
+    <string name="no_contacts_match">No contacts match your search</string>
+    <string name="recent">Recent</string>
 
     <string name="files_list_title">Files</string>
     <string name="empty_vault_title">No media yet</string>

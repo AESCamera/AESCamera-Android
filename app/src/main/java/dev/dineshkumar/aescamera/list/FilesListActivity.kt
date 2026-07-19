@@ -310,6 +310,7 @@ class FilesListActivity : ProtectedBaseActivity() {
         val dialog = object : ContactPickerDialog(
             this,
             contacts,
+            adapter.getSelectedItemsCount(),
             onContactSelected = { contact ->
                 shareSelectedItemsOnWhatsApp(contact)
 

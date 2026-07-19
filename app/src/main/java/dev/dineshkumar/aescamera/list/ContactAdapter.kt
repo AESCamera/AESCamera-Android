@@ -44,13 +44,13 @@ class ContactAdapter(
         private val name: TextView = itemView.findViewById(R.id.tvName)
         private val contactNo: TextView = itemView.findViewById(R.id.tvPhone)
         private val photo: ImageView = itemView.findViewById(R.id.ivContact)
-        private val previouslySelected: ImageView = itemView.findViewById(R.id.ivPreviouslySelected)
+        private val recentLabel: TextView = itemView.findViewById(R.id.tvRecent)
 
         fun bind(item: ContactItem) {
             name.text = item.name
             contactNo.text = item.contactNo
-            previouslySelected.visibility =
-                if (item.previouslySelected) View.VISIBLE else View.INVISIBLE
+            recentLabel.visibility =
+                if (item.previouslySelected) View.VISIBLE else View.GONE
 
             try {
                 val photoUri = item.photoUri
