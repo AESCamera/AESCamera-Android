@@ -19,6 +19,8 @@ import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
+import dev.dineshkumar.aescamera.utils.actionBarSize
+import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.viewer.GalleryNav
 import java.io.File
 
@@ -35,6 +37,10 @@ class FilesListActivity : ProtectedBaseActivity() {
         setContentView(binding.root)
 
         setupActionBar()
+        // Edge-to-edge (targetSdk 36): the grid is laid out behind the (opaque) action
+        // bar and under the navigation bar, so inset it past both. clipToPadding=false
+        // lets rows scroll through the padded strips.
+        binding.fileListRecyclerView.applySystemBarInsetsAsPadding(extraTop = actionBarSize())
         setupRecyclerView()
 
         val app = application as AESCameraApplication

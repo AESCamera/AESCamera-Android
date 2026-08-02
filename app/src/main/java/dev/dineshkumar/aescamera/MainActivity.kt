@@ -18,6 +18,7 @@ import dev.dineshkumar.aescamera.list.FilesListActivity
 import dev.dineshkumar.aescamera.utils.CommonUtils
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.ThumbnailUtils
+import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.video.EncryptedVideoRecording
 import com.otaliastudios.cameraview.CameraException
 import com.otaliastudios.cameraview.PictureResult
@@ -45,6 +46,11 @@ class MainActivity : ProtectedBaseActivity() {
         setContentView(binding.root)
 
         supportActionBar?.hide();
+
+        // Edge-to-edge is enforced at targetSdk 36; keep the top/bottom controls out of
+        // the status- and navigation-bar areas. The preview sits between the button rows,
+        // so padding the black root just frames it and shifts the controls into safety.
+        binding.root.applySystemBarInsetsAsPadding()
 
         binding.camera.setAutoFocusMarker(DefaultAutoFocusMarker())
 

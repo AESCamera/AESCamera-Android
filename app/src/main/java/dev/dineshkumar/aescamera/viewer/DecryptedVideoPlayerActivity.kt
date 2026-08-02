@@ -26,6 +26,7 @@ import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityDecryptedVideoPlayerBinding
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
+import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.utils.EncvVerification
 import dev.dineshkumar.aescamera.viewer.datasource.EncryptedCTRDataSourceFactory
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -73,6 +74,11 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.decrypted_video_player_title)
+
+        // Edge-to-edge (targetSdk 36): the video stays full-bleed, but inset the Media3
+        // controller so its bottom bar (time, settings) clears the navigation bar.
+        binding.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)
+            ?.applySystemBarInsetsAsPadding(top = false)
 
         galleryPaths = intent.getStringArrayListExtra(GalleryNav.EXTRA_PATHS)
         val path = galleryPaths?.let { paths ->
