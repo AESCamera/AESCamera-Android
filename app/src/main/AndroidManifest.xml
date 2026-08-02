@@ -9,8 +9,6 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <uses-permission android:name="android.permission.READ_CONTACTS" />
-
     <application
         android:name=".AESCameraApplication"
         android:allowBackup="false"

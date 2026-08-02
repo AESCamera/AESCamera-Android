@@ -7,12 +7,6 @@
 
     <style name="Theme.AESCamera" parent="Base.Theme.AESCamera" />
 
-    <!-- Circular clip for contact avatars in the WhatsApp picker (item_contact). -->
-    <style name="ShapeAppearanceOverlay.AESCamera.Circle" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">50%</item>
-    </style>
-
     <!--
       Previous/next control shared by the image viewer and the video player, so both
       screens navigate the gallery with identical buttons. Borderless white icon on a

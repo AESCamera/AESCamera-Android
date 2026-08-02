@@ -1,19 +1,13 @@
 package dev.dineshkumar.aescamera.list
 
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.ContactsContract
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.database.getStringOrNull
 import androidx.recyclerview.widget.GridLayoutManager
 import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
@@ -95,12 +89,10 @@ class FilesListActivity : ProtectedBaseActivity() {
         if (selectedCount > 0) {
             optionsMenu?.findItem(R.id.action_delete)?.isVisible = true
             optionsMenu?.findItem(R.id.action_share)?.isVisible = true
-            optionsMenu?.findItem(R.id.action_share_whatsapp)?.isVisible = true
             supportActionBar?.title = getString(R.string.selected_count, selectedCount)
         } else {
             optionsMenu?.findItem(R.id.action_delete)?.isVisible = false
             optionsMenu?.findItem(R.id.action_share)?.isVisible = false
-            optionsMenu?.findItem(R.id.action_share_whatsapp)?.isVisible = false
             supportActionBar?.title = getString(R.string.files_list_title)
         }
     }
@@ -179,59 +171,6 @@ class FilesListActivity : ProtectedBaseActivity() {
         adapter.clearSelection()
     }
 
-    private fun getWhatsappContacts(): List<ContactItem> {
-        val contacts = mutableListOf<ContactItem>()
-
-
-        val sharedPref = getSharedPreferences("selected_contact", Context.MODE_PRIVATE)
-        val lastSelectedContact = sharedPref.getString("number", null)
-
-        val contentResolver = this.contentResolver
-        val cursor = contentResolver.query(
-            ContactsContract.Data.CONTENT_URI,
-            arrayOf(
-                ContactsContract.Data.DISPLAY_NAME,
-                ContactsContract.Data.DATA1,
-                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
-            ),
-            "mimetype=?",
-            arrayOf("vnd.android.cursor.item/vnd.com.whatsapp.profile"),
-            ContactsContract.Data.DISPLAY_NAME
-        )
-
-        if (cursor != null && cursor.count > 0) {
-            while (cursor.moveToNext()) {
-                val name = cursor.getString(0)
-                val number = cursor.getString(1)
-                val photoUri = cursor.getStringOrNull(2)
-                val previouslySelected = number == lastSelectedContact
-
-                contacts.add(
-                    ContactItem(
-                        name,
-                        number,
-                        photoUri,
-                        previouslySelected
-                    )
-                )
-            }
-        }
-
-        cursor?.close()
-
-        return if (lastSelectedContact != null) {
-            contacts.sortedBy {
-                if (it.contactNo.equals(lastSelectedContact)) {
-                    0
-                } else {
-                    1
-                }
-            }
-        } else {
-            contacts
-        }
-    }
-
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.file_list_menu, menu)
         optionsMenu = menu
@@ -274,11 +213,6 @@ class FilesListActivity : ProtectedBaseActivity() {
                 true
             }
 
-            R.id.action_share_whatsapp -> {
-                showSelectContactDialog()
-                true
-            }
-
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -296,70 +230,5 @@ class FilesListActivity : ProtectedBaseActivity() {
     override fun onDestroy() {
         super.onDestroy()
         adapter.onDestroy()
-    }
-
-    private fun showSelectContactDialog() {
-        if (ContextCompat.checkSelfPermission(
-                this,
-                android.Manifest.permission.READ_CONTACTS
-            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            Toast.makeText(this, "Please grant the permission to read contacts", Toast.LENGTH_SHORT)
-                .show()
-            requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 1)
-            return
-        }
-
-
-        val contacts = getWhatsappContacts()
-
-        val dialog = object : ContactPickerDialog(
-            this,
-            contacts,
-            adapter.getSelectedItemsCount(),
-            onContactSelected = { contact ->
-                shareSelectedItemsOnWhatsApp(contact)
-
-                // Save the selected contact to the shared preferences
-                val sharedPref = getSharedPreferences("selected_contact", Context.MODE_PRIVATE)
-                with(sharedPref.edit()) {
-                    putString("number", contact.contactNo)
-                    apply()
-                }
-            }
-        ) {}
-
-        dialog.show()
-    }
-
-    private fun shareSelectedItemsOnWhatsApp(contact: ContactItem) {
-        val selectedFiles = adapter.getSelectedItems()
-
-        val intent = Intent()
-        intent.setAction(Intent.ACTION_SEND_MULTIPLE)
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        intent.setType("application/octet-stream")
-        intent.setComponent(
-            ComponentName(
-                "com.whatsapp",
-                "com.whatsapp.contact.picker.ContactPicker"
-            )
-        )
-        intent.putExtra(
-            "jid",
-            contact.contactNo
-        );
-
-        val files = ArrayList<Uri>()
-
-        for (file in selectedFiles) {
-            val uri = FileProvider.getUriForFile(this, application.packageName + ".provider", file)
-            files.add(uri)
-        }
-
-        intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, files)
-        startActivity(intent)
-
-        adapter.clearSelection()
     }
 }
