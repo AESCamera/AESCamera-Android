@@ -11,8 +11,10 @@ Thanks for your interest in improving AES Camera. This document explains how to 
 ## Building and running
 
 See the Building section of the [README](README.md) for JDK, SDK, and Gradle requirements.
-In short:
+CameraView is a git submodule, so clone with `--recurse-submodules` (or run
+`git submodule update --init` in an existing clone). In short:
 
+    git submodule update --init
     ./gradlew :app:assembleDebug
 
 ## Code style

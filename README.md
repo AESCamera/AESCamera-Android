@@ -50,10 +50,13 @@ Visit the [website](https://aescamera.dineshkumar.dev) for the full walkthrough.
 **Debug build**
 
 ```bash
-git clone <repo-url>
+git clone --recurse-submodules <repo-url>
 cd AESCamera
 ./gradlew :app:assembleDebug
 ```
+
+CameraView is pulled in as a git submodule (`libs/CameraView`). If you cloned without
+`--recurse-submodules`, run `git submodule update --init` before building.
 
 The debug keystore (`debug.jks`) is committed so debug builds from any machine share a
 signature and can update each other's installs.
