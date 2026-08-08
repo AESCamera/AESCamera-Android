@@ -1,16 +1,28 @@
-// Vendored from com.otaliastudios:cameraview:2.7.2 (https://github.com/natario1/CameraView)
-// so that FullVideoRecorder can be patched to support MPEG-2 TS output for
-// encrypt-while-recording. Patch sites are marked with "AESCamera patch" comments.
+// CameraView, consumed as source from the git submodule at libs/CameraView (a fork of
+// https://github.com/natario1/CameraView with MPEG-2 TS output support for
+// encrypt-while-recording). Only the build config and manifest live here; the Java and
+// resources come from the submodule, so the fork stays a pristine, publishable checkout.
 plugins {
     id("com.android.library")
 }
 
+val cameraViewMain = "../libs/CameraView/cameraview/src/main"
+
 android {
     namespace = "com.otaliastudios.cameraview"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.setSrcDirs(listOf("$cameraViewMain/java"))
+            res.setSrcDirs(listOf("$cameraViewMain/res"))
+            // Manifest stays local: the fork's still carries the legacy package=
+            // attribute that modern AGP rejects.
+        }
     }
 
     compileOptions {

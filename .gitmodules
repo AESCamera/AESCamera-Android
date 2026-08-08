@@ -1,0 +1,3 @@
+[submodule "libs/CameraView"]
+	path = libs/CameraView
+	url = https://github.com/AESCamera/CameraView.git
