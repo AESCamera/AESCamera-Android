@@ -2,6 +2,7 @@ package dev.dineshkumar.aescamera.utils
 
 import android.graphics.Bitmap
 import android.util.TypedValue
+import androidx.core.graphics.scale
 import dev.dineshkumar.aescamera.AESCameraApplication
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -36,12 +37,7 @@ class ThumbnailUtils {
             val sourceImage = ImageUtils.decodeOriented(inputPicture, thumbnailWidth)
             val thumbnailHeight = sourceImage.height * thumbnailWidth / sourceImage.width
 
-            val thumbnail = Bitmap.createScaledBitmap(
-                sourceImage,
-                thumbnailWidth,
-                thumbnailHeight,
-                true
-            )
+            val thumbnail = sourceImage.scale(thumbnailWidth, thumbnailHeight)
 
             val thumbnailOutputStream = ByteArrayOutputStream()
             thumbnail.compress(Bitmap.CompressFormat.JPEG, 90, thumbnailOutputStream)

@@ -23,7 +23,10 @@
     <string name="files_list_title">Files</string>
     <string name="empty_vault_title">No media yet</string>
     <string name="empty_vault_message">Photos and videos you capture will appear here.</string>
-    <string name="selected_count">%1$d Selected</string>
+    <plurals name="selected_count">
+        <item quantity="one">%d Selected</item>
+        <item quantity="other">%d Selected</item>
+    </plurals>
 
     <string name="decrypted_image_viewer_title">Decrypted Image</string>
     <string name="error_no_file_selected">Error: No file selected</string>
@@ -48,15 +51,12 @@
     <string name="fa_camera_mode_photo">f030</string>
     <string name="fa_camera_start_recording">f192</string>
     <string name="fa_camera_stop_recording">f04d</string>
-    <string name="fa_chevron_left">f053</string>
-    <string name="fa_chevron_right">f054</string>
     <string name="fa_backward_step">f048</string>
     <string name="fa_forward_step">f051</string>
 
     <string name="previous_item">Previous</string>
     <string name="next_item">Next</string>
     <string name="fa_folder_open">f07c</string>
-    <string name="fa_file">f15b</string>
     <string name="fa_file_image">f1c5</string>
     <string name="fa_file_video">f1c8</string>
     <string name="fa_play">f04b</string>

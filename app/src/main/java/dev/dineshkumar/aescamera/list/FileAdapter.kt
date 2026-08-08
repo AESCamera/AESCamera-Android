@@ -18,6 +18,7 @@ import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
+import java.util.Locale
 import dev.dineshkumar.aescamera.databinding.ItemFileBinding
 import dev.dineshkumar.aescamera.viewer.DecryptedImageViewerActivity
 import kotlinx.coroutines.Dispatchers
@@ -112,9 +113,9 @@ class FileAdapter(
             val kb = size / 1024.0
             val mb = kb / 1024.0
             return when {
-                mb >= 1 -> String.format("%.2f MB", mb)
-                kb >= 1 -> String.format("%.2f KB", kb)
-                else -> String.format("%d bytes", size)
+                mb >= 1 -> String.format(Locale.getDefault(), "%.2f MB", mb)
+                kb >= 1 -> String.format(Locale.getDefault(), "%.2f KB", kb)
+                else -> String.format(Locale.getDefault(), "%d bytes", size)
             }
         }
     }

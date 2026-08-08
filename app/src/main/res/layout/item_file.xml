@@ -40,9 +40,8 @@
             android:layout_gravity="center"
             android:background="@drawable/bg_play_badge"
             android:gravity="center"
-            android:paddingStart="2dp"
             android:textColor="@color/white"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:visibility="gone"
             app:faIcon="@string/fa_play"
             app:faStyle="solid" />

@@ -89,7 +89,8 @@ class FilesListActivity : ProtectedBaseActivity() {
         if (selectedCount > 0) {
             optionsMenu?.findItem(R.id.action_delete)?.isVisible = true
             optionsMenu?.findItem(R.id.action_share)?.isVisible = true
-            supportActionBar?.title = getString(R.string.selected_count, selectedCount)
+            supportActionBar?.title =
+                resources.getQuantityString(R.plurals.selected_count, selectedCount, selectedCount)
         } else {
             optionsMenu?.findItem(R.id.action_delete)?.isVisible = false
             optionsMenu?.findItem(R.id.action_share)?.isVisible = false
