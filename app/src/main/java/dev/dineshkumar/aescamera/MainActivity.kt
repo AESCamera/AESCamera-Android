@@ -38,6 +38,13 @@ class MainActivity : ProtectedBaseActivity() {
     // the video recording with this file name, not a photo to store.
     private var pendingVideoThumbnailName: String? = null
 
+    // True from the moment a photo capture is requested until its PictureResult (or an
+    // error) arrives. Switching the camera to VIDEO mode during this window makes the
+    // CameraView engine run the still-pending picture action in VIDEO mode and throw
+    // "Can't take hq pictures while in VIDEO mode" on its worker thread, crashing the
+    // app — so toggleMode() refuses to switch while this is set.
+    private var isCapturingPhoto = false
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -130,6 +137,7 @@ class MainActivity : ProtectedBaseActivity() {
 
     private fun disableControls() {
         binding.cameraCaptureButton.isEnabled = false
+        binding.cameraModeToggleButton.isEnabled = false
         binding.cameraFlipButton.isEnabled = false
         binding.openFilesListButton.isEnabled = false
         binding.flashButton.isEnabled = false
@@ -137,6 +145,7 @@ class MainActivity : ProtectedBaseActivity() {
 
     private fun enableControls() {
         binding.cameraCaptureButton.isEnabled = true
+        binding.cameraModeToggleButton.isEnabled = true
         binding.cameraFlipButton.isEnabled = true
         binding.openFilesListButton.isEnabled = true
         binding.flashButton.isEnabled = true
@@ -155,7 +164,7 @@ class MainActivity : ProtectedBaseActivity() {
     }
 
     private fun toggleMode() {
-        if (binding.camera.isTakingVideo) {
+        if (binding.camera.isTakingVideo || isCapturingPhoto) {
             return
         }
 
@@ -208,6 +217,8 @@ class MainActivity : ProtectedBaseActivity() {
     }
 
     private fun takePhoto() {
+        // Guard before the async capture starts: no mode switch until it resolves.
+        isCapturingPhoto = true
         binding.camera.takePicture()
     }
 
@@ -267,8 +278,11 @@ class MainActivity : ProtectedBaseActivity() {
                 }
                 activeRecording = recording
                 binding.camera.takeVideo(recording.writeFileDescriptor)
-                setRecordingUi(true)
+                // Re-enable the shutter (needed to stop recording) first, then let the
+                // recording UI state re-lock the controls that must stay disabled while
+                // recording (mode toggle, flip, files, flash).
                 enableControls()
+                setRecordingUi(true)
             }
         }.start()
     }
@@ -371,6 +385,8 @@ class MainActivity : ProtectedBaseActivity() {
             setRecordingUi(false)
         }
 
+        // A failed capture also ends the photo-capture window.
+        isCapturingPhoto = false
         enableControls()
     }
 
@@ -417,6 +433,10 @@ class MainActivity : ProtectedBaseActivity() {
             }.start()
             return
         }
+
+        // A real photo (not a video-thumbnail snapshot) resolved: the capture window is
+        // over, so mode switching is safe again.
+        isCapturingPhoto = false
 
         val key = app.key
         val outputDirectory = app.outputDirectory
