@@ -13,6 +13,10 @@ ever written to disk unencrypted. Media lives on-device and can only be viewed w
   (MPEG-2 TS -> `CipherOutputStream`), so no unencrypted video is ever written.
 - **A private vault.** Browse encrypted photos and videos in a grid with encrypted
   thumbnails; open them in an in-app viewer/player that decrypts on the fly.
+- **Share, still encrypted.** Send photos and videos out through the app of your choice
+  as ciphertext (AES Camera has no network access of its own; the app you share to does the
+  sending). Because every file is self-contained, anyone running AES Camera with the
+  matching password can open a shared photo and add it to their own vault.
 - **Your key, your access.** A password derives the vault key; it's held in memory only
   and never persisted. The app **auto-locks** shortly after it goes to the background.
 - **Screenshot-resistant.** `FLAG_SECURE` blocks screenshots and recents-preview
