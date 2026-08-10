@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Vault grid item thumbnail/icon size. Scaled up on tablets (values-sw600dp / values-sw720dp)
+         so cells don't look sparse on larger grids. -->
+    <dimen name="file_thumbnail_size">48dp</dimen>
+</resources>

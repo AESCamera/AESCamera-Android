@@ -67,7 +67,10 @@ class FilesListActivity : ProtectedBaseActivity() {
             onSelectionChanged(selectedCount)
         })
         binding.fileListRecyclerView.apply {
-            layoutManager = GridLayoutManager(this@FilesListActivity, 3)
+            layoutManager = GridLayoutManager(
+                this@FilesListActivity,
+                resources.getInteger(R.integer.file_grid_columns)
+            )
             adapter = this@FilesListActivity.adapter
         }
     }

@@ -13,21 +13,21 @@
         android:padding="0dp" />
 
     <FrameLayout
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="@dimen/file_thumbnail_size"
+        android:layout_height="@dimen/file_thumbnail_size"
         android:layout_gravity="center">
 
         <dev.dineshkumar.aescamera.views.FontAwesomeTextView
             android:id="@+id/fileIcon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="@dimen/file_thumbnail_size"
+            android:layout_height="@dimen/file_thumbnail_size"
             android:gravity="center"
             android:textSize="36sp" />
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/fileThumbnail"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="@dimen/file_thumbnail_size"
+            android:layout_height="@dimen/file_thumbnail_size"
             android:scaleType="fitCenter"
             android:adjustViewBounds="true"
             android:visibility="gone" />

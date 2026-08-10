@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Tablet variant (smallest width >= 600dp). Same views and ids as the default
+    layout/activity_main.xml, but the capture controls are clustered around the
+    shutter instead of being pinned to the far screen edges, so they don't spread
+    out across the width of a large display. MainActivity relies only on the ids,
+    which are identical here.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black"
+    tools:context=".MainActivity">
+
+    <com.otaliastudios.cameraview.CameraView
+        android:id="@+id/camera"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:keepScreenOn="true"
+        app:cameraExperimental="true"
+        app:cameraEngine="camera2"
+        app:cameraGesturePinch="zoom"
+        app:cameraGestureTap="autoFocus"
+        app:cameraPlaySounds="false"
+        app:layout_constraintBottom_toTopOf="@id/camera_capture_button"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/lock_button" />
+
+    <!-- Momentary white flash over the preview at photo shutter (see MainActivity.flashShutter). -->
+    <View
+        android:id="@+id/shutter_flash"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/white"
+        android:elevation="1dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/camera"
+        app:layout_constraintLeft_toLeftOf="@id/camera"
+        app:layout_constraintRight_toRightOf="@id/camera"
+        app:layout_constraintTop_toTopOf="@id/camera" />
+
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/flash_button"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="30dp"
+        android:elevation="2dp"
+        android:padding="0dp"
+        android:scaleType="fitCenter"
+        android:textColor="@color/white"
+        android:textSize="25sp"
+        app:faIcon="@string/fa_light_bulb"
+        app:faStyle="regular"
+        app:iconTint="@null"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/recording_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="42dp"
+        android:background="@drawable/recording_indicator_background"
+        android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible">
+
+        <View
+            android:id="@+id/recording_dot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/recording_dot" />
+
+        <Chronometer
+            android:id="@+id/recording_duration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textColor="@color/white"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/lock_button"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginTop="30dp"
+        android:layout_marginEnd="30dp"
+        android:elevation="2dp"
+        android:padding="0dp"
+        android:scaleType="fitCenter"
+        android:textColor="@color/white"
+        android:textSize="25sp"
+        android:visibility="invisible"
+        app:faIcon="@string/fa_lock"
+        app:faStyle="solid"
+        app:iconTint="@null"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/camera_capture_button"
+        android:layout_width="90dp"
+        android:layout_height="90dp"
+        android:layout_marginBottom="40dp"
+        android:elevation="2dp"
+        android:padding="0dp"
+        android:scaleType="fitCenter"
+        android:textColor="@color/white"
+        android:textSize="50sp"
+        app:faIcon="@string/fa_camera"
+        app:faStyle="solid"
+        app:iconTint="@null"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent" />
+
+    <!-- Clustered just right of the shutter (not pinned to the screen edge). -->
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/camera_flip_button"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_marginStart="40dp"
+        android:elevation="2dp"
+        android:padding="0dp"
+        android:scaleType="fitCenter"
+        android:textColor="@color/white"
+        android:textSize="30sp"
+        app:faIcon="@string/fa_camera_rotate"
+        app:faStyle="solid"
+        app:iconTint="@null"
+        app:layout_constraintBottom_toBottomOf="@id/camera_capture_button"
+        app:layout_constraintLeft_toRightOf="@id/camera_capture_button"
+        app:layout_constraintTop_toTopOf="@id/camera_capture_button" />
+
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/camera_mode_toggle_button"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_marginBottom="10dp"
+        android:elevation="2dp"
+        android:padding="0dp"
+        android:scaleType="fitCenter"
+        android:textColor="@color/white"
+        android:textSize="30sp"
+        app:faIcon="@string/fa_camera_mode_video"
+        app:faStyle="solid"
+        app:iconTint="@null"
+        app:layout_constraintBottom_toTopOf="@id/camera_flip_button"
+        app:layout_constraintLeft_toLeftOf="@id/camera_flip_button"
+        app:layout_constraintRight_toRightOf="@id/camera_flip_button" />
+
+    <!-- Clustered just left of the shutter (not pinned to the screen edge). -->
+    <dev.dineshkumar.aescamera.views.FontAwesomeButton
+        android:id="@+id/open_files_list_button"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_marginEnd="40dp"
+        android:elevation="2dp"
+        android:padding="0dp"
+        android:scaleType="fitCenter"
+        android:textColor="@color/white"
+        android:textSize="30sp"
+        app:faIcon="@string/fa_folder_open"
+        app:faStyle="solid"
+        app:iconTint="@null"
+        app:layout_constraintBottom_toBottomOf="@id/camera_capture_button"
+        app:layout_constraintRight_toLeftOf="@id/camera_capture_button"
+        app:layout_constraintTop_toTopOf="@id/camera_capture_button" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

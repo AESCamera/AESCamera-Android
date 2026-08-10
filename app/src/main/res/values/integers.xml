@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Vault grid columns. Overridden for larger screens in values-sw600dp / values-sw720dp. -->
+    <integer name="file_grid_columns">3</integer>
+</resources>
