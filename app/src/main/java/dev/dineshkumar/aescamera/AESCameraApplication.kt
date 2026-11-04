@@ -5,6 +5,7 @@ import android.app.Application
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import dev.dineshkumar.aescamera.importer.ImportActivity
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
@@ -22,6 +23,10 @@ class AESCameraApplication : Application() {
 
             if (value == null) {
                 EncryptionUtils.clearKeyCache()
+                synchronized(prewarmLock) {
+                    preparedPhotoSalt = null
+                    preparedVideoSalt = null
+                }
                 outputDirectory = null
                 keyLiveData.postValue(null)
                 return
@@ -33,7 +38,61 @@ class AESCameraApplication : Application() {
             outputDirectory = VaultUtils.findVault(value, this)
 
             keyLiveData.postValue(value)
+            prewarmKeys()
         }
+
+    // Salts whose file keys are already derived and sitting in the key cache, so the
+    // next photo / recording pays no PBKDF2 at the shutter (see EncryptionUtils).
+    private val prewarmLock = Any()
+    private var preparedPhotoSalt: ByteArray? = null
+    private var preparedVideoSalt: ByteArray? = null
+    private var prewarming = false
+
+    /**
+     * Derives the next photo and video file keys in the background if they are not
+     * ready yet. Cheap to call often (after every save, on unlock, on mode switch).
+     */
+    fun prewarmKeys() {
+        val currentKey = key ?: return
+        synchronized(prewarmLock) {
+            if (prewarming || (preparedPhotoSalt != null && preparedVideoSalt != null)) {
+                return
+            }
+            prewarming = true
+        }
+        Thread({
+            try {
+                if (synchronized(prewarmLock) { preparedPhotoSalt == null }) {
+                    val salt = EncryptionUtils.newSalt()
+                    EncryptionUtils.prewarmImageKey(currentKey, salt)
+                    synchronized(prewarmLock) {
+                        if (key == currentKey) preparedPhotoSalt = salt
+                    }
+                }
+                if (synchronized(prewarmLock) { preparedVideoSalt == null }) {
+                    val salt = EncryptionUtils.newSalt()
+                    EncryptionUtils.prewarmVideoKey(currentKey, salt)
+                    synchronized(prewarmLock) {
+                        if (key == currentKey) preparedVideoSalt = salt
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Key pre-derivation failed: ${e.message}")
+            } finally {
+                synchronized(prewarmLock) { prewarming = false }
+            }
+        }, "KeyPrewarm").start()
+    }
+
+    /** A salt with a pre-derived photo key, or null if none is ready (derive on the spot). */
+    fun takePhotoSalt(): ByteArray? = synchronized(prewarmLock) {
+        preparedPhotoSalt.also { preparedPhotoSalt = null }
+    }
+
+    /** Video counterpart of [takePhotoSalt]. */
+    fun takeVideoSalt(): ByteArray? = synchronized(prewarmLock) {
+        preparedVideoSalt.also { preparedVideoSalt = null }
+    }
 
     /**
      * The vault directory of the current key, or null while locked or while the key has
@@ -120,5 +179,9 @@ class AESCameraApplication : Application() {
 
     private val clearKeyRunnable = Runnable {
         key = null
+    }
+
+    companion object {
+        private const val TAG = "AESCameraApplication"
     }
 }

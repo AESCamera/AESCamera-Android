@@ -15,6 +15,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import dev.dineshkumar.aescamera.databinding.ActivityMainBinding
 import dev.dineshkumar.aescamera.list.FilesListActivity
+import dev.dineshkumar.aescamera.utils.AppPrefs
 import dev.dineshkumar.aescamera.utils.CommonUtils
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.ThumbnailUtils
@@ -27,6 +28,8 @@ import com.otaliastudios.cameraview.controls.Facing
 import com.otaliastudios.cameraview.controls.Mode
 import com.otaliastudios.cameraview.markers.DefaultAutoFocusMarker
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 
 class MainActivity : ProtectedBaseActivity() {
@@ -45,12 +48,25 @@ class MainActivity : ProtectedBaseActivity() {
     // app — so toggleMode() refuses to switch while this is set.
     private var isCapturingPhoto = false
 
+    private lateinit var prefs: AppPrefs
+
+    // Photo saves run one after another on this executor. With rapid capture on, the
+    // shutter stays live while earlier photos are still being encrypted; each pending
+    // save holds a full-resolution JPEG in memory, so the number in flight is capped.
+    private val saveExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var pendingSaves = 0
+
+    // True for the capture currently in flight: decided at the shutter so a settings
+    // change mid-capture cannot unbalance the control state.
+    private var rapidCaptureActive = false
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        prefs = AppPrefs(this)
 
         supportActionBar?.hide();
 
@@ -174,6 +190,9 @@ class MainActivity : ProtectedBaseActivity() {
             Mode.PICTURE
         }
 
+        // Have the next recording's key ready before the user taps record.
+        (application as AESCameraApplication).prewarmKeys()
+
         if (binding.camera.mode == Mode.PICTURE) {
             binding.cameraCaptureButton.setIcon(getString(R.string.fa_camera))
             binding.cameraModeToggleButton.setIcon(getString(R.string.fa_camera_mode_video))
@@ -219,6 +238,7 @@ class MainActivity : ProtectedBaseActivity() {
     private fun takePhoto() {
         // Guard before the async capture starts: no mode switch until it resolves.
         isCapturingPhoto = true
+        rapidCaptureActive = prefs.rapidCapture
         binding.camera.takePicture()
     }
 
@@ -252,7 +272,7 @@ class MainActivity : ProtectedBaseActivity() {
                     ?: throw IllegalStateException("Locked while starting the recording")
                 outputDirectory.mkdirs()
                 val outputFile = File(outputDirectory, CommonUtils.getVideoFileName())
-                EncryptedVideoRecording(outputFile, key)
+                EncryptedVideoRecording(outputFile, key, app.takeVideoSalt())
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set up encrypted recording: ${e.message}", e)
                 runOnUiThread {
@@ -325,6 +345,7 @@ class MainActivity : ProtectedBaseActivity() {
         }
 
         Thread {
+            (application as AESCameraApplication).prewarmKeys()
             try {
                 recording.finish(result.rotation)
                 runOnUiThread {
@@ -384,15 +405,42 @@ class MainActivity : ProtectedBaseActivity() {
 
         // A failed capture also ends the photo-capture window.
         isCapturingPhoto = false
+        if (rapidCaptureActive && pendingSaves > 0) {
+            pendingSaves--
+        }
         enableControls()
     }
 
     private fun pictureShutter() {
         // Video thumbnail snapshots must not lock the recording controls or flash the
         // screen — they're taken silently while a recording starts.
-        if (pendingVideoThumbnailName == null) {
+        if (pendingVideoThumbnailName != null) {
+            return
+        }
+        flashShutter()
+        if (rapidCaptureActive) {
+            // Only the mode toggle must wait for the capture; the shutter stays live
+            // until too many saves are queued.
+            pendingSaves++
+            binding.cameraModeToggleButton.isEnabled = false
+            binding.cameraCaptureButton.isEnabled = pendingSaves < MAX_PENDING_SAVES
+        } else {
             disableControls()
-            flashShutter()
+        }
+    }
+
+    /** Called when a photo save finishes (either way) to release what the shutter locked. */
+    private fun photoSaveFinished(rapid: Boolean) {
+        if (rapid) {
+            if (pendingSaves > 0) {
+                pendingSaves--
+            }
+            binding.cameraCaptureButton.isEnabled = pendingSaves < MAX_PENDING_SAVES
+            if (!isCapturingPhoto) {
+                binding.cameraModeToggleButton.isEnabled = true
+            }
+        } else {
+            enableControls()
         }
     }
 
@@ -434,20 +482,26 @@ class MainActivity : ProtectedBaseActivity() {
         // A real photo (not a video-thumbnail snapshot) resolved: the capture window is
         // over, so mode switching is safe again.
         isCapturingPhoto = false
+        val rapid = rapidCaptureActive
+        if (rapid) {
+            binding.cameraModeToggleButton.isEnabled = true
+        }
 
         val key = app.key
         if (key == null) {
             Toast.makeText(this@MainActivity, "Key not found", Toast.LENGTH_SHORT).show()
-            enableControls()
+            photoSaveFinished(rapid)
             return
         }
 
         val fileName = CommonUtils.getImageFileName()
+        // The next file key is normally derived already (prewarmKeys); if not, the
+        // encrypt below derives it on the spot.
+        val salt = app.takePhotoSalt() ?: EncryptionUtils.newSalt()
 
-        // Encrypting pays a fresh PBKDF2 derivation per file (random salt), so the
-        // save + thumbnail work runs off the main thread. The controls were disabled
-        // at shutter (pictureShutter) and come back when the save finishes.
-        Thread {
+        // The save + thumbnail work runs off the main thread, in capture order. The
+        // controls locked at shutter (pictureShutter) come back in photoSaveFinished.
+        saveExecutor.execute {
             // The vault dir lives on shared storage and can vanish underneath us (file
             // managers, MediaProvider cleanup); recreate it and surface write failures
             // instead of crashing. ensureVault creates the vault on the first save.
@@ -456,7 +510,7 @@ class MainActivity : ProtectedBaseActivity() {
                     ?: throw IllegalStateException("Locked while saving the photo")
                 outputDirectory.mkdirs()
                 val encryptedFile = File(outputDirectory, fileName)
-                EncryptionUtils.encryptImage(pictureResult.data, key).let {
+                EncryptionUtils.encryptImage(pictureResult.data, key, salt = salt).let {
                     encryptedFile.writeBytes(it)
                 }
             } catch (e: Exception) {
@@ -467,9 +521,10 @@ class MainActivity : ProtectedBaseActivity() {
                         getString(R.string.photo_save_failed_message),
                         Toast.LENGTH_LONG
                     ).show()
-                    enableControls()
+                    photoSaveFinished(rapid)
                 }
-                return@Thread
+                app.prewarmKeys()
+                return@execute
             }
 
             try {
@@ -478,15 +533,28 @@ class MainActivity : ProtectedBaseActivity() {
                 Log.e(TAG, "Failed to create photo thumbnail: ${e.message}", e)
             }
 
+            // Derive the key for the photo after this one while the camera is idle.
+            app.prewarmKeys()
+
             runOnUiThread {
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.photo_saved_message, fileName),
-                    Toast.LENGTH_SHORT
-                ).show()
-                enableControls()
+                // In rapid mode the shutter flash is the feedback; a Toast per shot
+                // would pile up over the viewfinder.
+                if (!rapid) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.photo_saved_message, fileName),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                photoSaveFinished(rapid)
             }
-        }.start()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Queued saves keep running to completion; only stop accepting new ones.
+        saveExecutor.shutdown()
     }
 
     // checks the camera permission
@@ -512,6 +580,9 @@ class MainActivity : ProtectedBaseActivity() {
     companion object {
         private const val TAG = "AESCamera"
         private const val REQUEST_CODE_PERMISSIONS = 20
+
+        /** Rapid capture: photos that may be waiting to be encrypted before the shutter pauses. */
+        private const val MAX_PENDING_SAVES = 3
         private val REQUIRED_PERMISSIONS =
             arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     }

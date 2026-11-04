@@ -19,13 +19,20 @@ import java.io.FileDescriptor
  * There is deliberately no fallback: if any part of this pipeline fails, the recording
  * fails — recording without encryption is never acceptable.
  */
-class EncryptedVideoRecording(val outputFile: File, password: String) {
+class EncryptedVideoRecording(
+    val outputFile: File,
+    password: String,
+    preparedSalt: ByteArray? = null
+) {
 
     // Writes the .encv prefix (header + salt + iv) immediately. Rotation is not yet
     // known (CameraView computes it when recording ends), so it starts as 0 and is
-    // patched in finish(), together with the v3 authentication trailer.
+    // patched in finish(), together with the authentication trailer. A prepared salt
+    // (AESCameraApplication.takeVideoSalt) has its key derived already.
     private val encryptedStream: EncryptedVideoOutput =
-        EncryptionUtils.createEncryptedVideoOutputStream(outputFile, password, EncvHeader())
+        EncryptionUtils.createEncryptedVideoOutputStream(
+            outputFile, password, EncvHeader(), preparedSalt ?: EncryptionUtils.newSalt()
+        )
 
     private val readSide: ParcelFileDescriptor
     private val writeSide: ParcelFileDescriptor
