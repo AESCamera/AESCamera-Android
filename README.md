@@ -17,8 +17,18 @@ ever written to disk unencrypted. Media lives on-device and can only be viewed w
   as ciphertext (AES Camera has no network access of its own; the app you share to does the
   sending). Because every file is self-contained, anyone running AES Camera with the
   matching password can open a shared photo and add it to their own vault.
+- **Your choice of storage.** The vault lives in private app storage (readable only by
+  this app) or, if you prefer file-manager access, in `Android/media` on shared storage.
+  Move it between the two from Settings.
+- **Backup and restore.** Export the encrypted files to any folder the system file
+  picker can reach (SD card, USB drive, cloud drive) and restore them later. Files stay
+  encrypted; only this app and your password can open them.
+- **Open shared files.** `.enc` and `.encv` files received through a messenger, mail or a
+  file manager open in the app ("Open with" / "Share to"), and can be added to the vault.
 - **Your key, your access.** A password derives the vault key; it's held in memory only
   and never persisted. The app **auto-locks** shortly after it goes to the background.
+  Any password opens a vault — there is no wrong-password signal by design — and a vault
+  is only created on disk when the first photo or video is saved.
 - **Screenshot-resistant.** `FLAG_SECURE` blocks screenshots and recents-preview
   thumbnails on every screen.
 - **No tracking.** No analytics, no ads, no internet permission. Only `CAMERA` and
@@ -29,13 +39,18 @@ ever written to disk unencrypted. Media lives on-device and can only be viewed w
 | Asset | Scheme |
 |---|---|
 | Photos, thumbnails, vault verifier (`.enc` v1) | **AES-256-GCM** (authenticated; 12-byte nonce, 128-bit tag) |
-| Video (`.encv` v3) | **AES-256-CTR** streaming with an **HMAC** integrity trailer |
-| Key derivation | **PBKDF2-HMAC-SHA256**, random salt per file, cost stored per file |
+| Video (`.encv` v4) | **AES-256-CTR** streaming with an **HMAC-SHA256** integrity trailer |
+| Key derivation | **PBKDF2-HMAC-SHA256**, random salt per file, cost stored per file (210,000 iterations for photos and videos) |
+
+Older files remain readable: `.encv` v2/v3 recordings derive their key with the legacy
+PBKDF2-HMAC-SHA1 parameters recorded for that version, and pre-v1 `.enc` photos use the
+legacy AES-CBC path.
 
 - Every file is self-contained (its header carries the salt/nonce and KDF parameters),
   so files stay independently decryptable and the KDF cost stays tunable over time.
 - The derived key is kept in an in-memory LRU cache for the session and is dropped on
-  lock. It is never written to disk.
+  lock. It is never written to disk. The next file's key is derived in the background
+  ahead of the shutter, so capture does not wait on the KDF.
 
 > ⚠️ **There is no key recovery.** If you forget your password, the encrypted media cannot be decrypted.
 
