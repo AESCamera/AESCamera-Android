@@ -63,7 +63,7 @@ class EncryptedCTRDataSource(private val password: String) : BaseDataSource(fals
 
             // Jump the CTR counter straight to the requested plaintext offset.
             cipher = EncryptionUtils.ctrCipherAt(
-                Cipher.DECRYPT_MODE, password, salt, iv, dataSpec.position
+                Cipher.DECRYPT_MODE, password, salt, iv, header.kdf, dataSpec.position
             )
             raf.seek(EncvHeader.PREFIX_SIZE + dataSpec.position)
 

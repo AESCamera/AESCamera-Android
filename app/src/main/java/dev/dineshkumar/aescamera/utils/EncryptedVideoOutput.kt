@@ -40,7 +40,8 @@ class EncryptedVideoOutput internal constructor(
         val finalHeader = header.copy(
             rotationDegrees = rotationDegrees,
             flags = header.flags or EncvHeader.FLAG_AUTHENTICATED,
-            version = EncvHeader.VERSION_AUTHENTICATED
+            // The trailer needs at least v3; a v4 header keeps its KDF parameters.
+            version = maxOf(header.version, EncvHeader.VERSION_AUTHENTICATED)
         )
         val headerBytes = finalHeader.toBytes()
         EncvHeader.patchHeader(file, finalHeader)

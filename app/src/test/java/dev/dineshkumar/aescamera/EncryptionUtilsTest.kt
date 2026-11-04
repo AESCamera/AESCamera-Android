@@ -3,6 +3,7 @@ package dev.dineshkumar.aescamera
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
 import dev.dineshkumar.aescamera.utils.EncvVerification
+import dev.dineshkumar.aescamera.utils.VideoKdf
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -135,8 +136,60 @@ class EncryptionUtilsTest {
         val iv = bytes.sliceArray(32 until 48)
         val ciphertext = bytes.sliceArray(EncvHeader.PREFIX_SIZE until bytes.size)
 
-        val cipher = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv)
+        val cipher = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv, parsed.kdf)
         assertArrayEquals(plaintext, cipher.doFinal(ciphertext))
+    }
+
+    @Test
+    fun newRecordingsUseSha256AtThePhotoCost() {
+        val file = File.createTempFile("encv-kdf", ".encv").apply { deleteOnExit() }
+        EncryptionUtils.createEncryptedVideoOutputStream(file, password, EncvHeader())
+            .use { it.write(Random.nextBytes(1_000)) }
+
+        val header = EncvHeader.fromFile(file)
+        assertEquals(EncvHeader.VERSION_KDF, header.version)
+        assertEquals(VideoKdf.ID_SHA256, header.kdf.algorithmId)
+        assertEquals(EncryptionUtils.IMAGE_ITERATIONS, header.kdf.iterations)
+        assertEquals("PBKDF2WithHmacSHA256", header.kdf.algorithm)
+
+        // The parameters survive the header round trip byte for byte.
+        assertArrayEquals(header.toBytes(), file.readBytes().sliceArray(0 until EncvHeader.SIZE))
+    }
+
+    @Test
+    fun headerRejectsBadKdfParameters() {
+        val bytes = EncvHeader().toBytes()
+        bytes[12] = 9 // unknown algorithm id
+        assertThrows(IllegalArgumentException::class.java) { EncvHeader.fromBytes(bytes) }
+
+        val absurd = EncvHeader().toBytes()
+        for (i in 8..11) absurd[i] = 0x7F // ≈ 2^31 iterations
+        assertThrows(IllegalArgumentException::class.java) { EncvHeader.fromBytes(absurd) }
+    }
+
+    @Test
+    fun prewarmedSaltEncryptsIdenticallyToColdDerivation() {
+        // Pre-deriving only fills the cache: the file written with a prewarmed salt is
+        // indistinguishable from one written with a cold derivation of the same salt.
+        val plaintext = Random.nextBytes(5_000)
+        val salt = EncryptionUtils.newSalt()
+        EncryptionUtils.prewarmImageKey(password, salt)
+        val warm = EncryptionUtils.encryptImage(plaintext, password, salt = salt)
+        EncryptionUtils.clearKeyCache()
+        assertArrayEquals(plaintext, EncryptionUtils.decryptImage(warm, password))
+        assertArrayEquals(salt, warm.sliceArray(9 until 25))
+
+        val videoSalt = EncryptionUtils.newSalt()
+        EncryptionUtils.prewarmVideoKey(password, videoSalt)
+        val file = File.createTempFile("encv-warm", ".encv").apply { deleteOnExit() }
+        val out = EncryptionUtils.createEncryptedVideoOutputStream(
+            file, password, EncvHeader(), videoSalt
+        )
+        out.use { it.write(plaintext) }
+        out.finish(0)
+        EncryptionUtils.clearKeyCache()
+        assertEquals(EncvVerification.VERIFIED, EncryptionUtils.verifyEncv(file, password))
+        assertArrayEquals(videoSalt, file.readBytes().sliceArray(16 until 32))
     }
 
     @Test
@@ -148,6 +201,7 @@ class EncryptionUtilsTest {
             .use { it.write(plaintext) }
 
         val bytes = file.readBytes()
+        val kdf = EncvHeader.fromBytes(bytes).kdf
         val salt = bytes.sliceArray(16 until 32)
         val iv = bytes.sliceArray(32 until 48)
         val ciphertext = bytes.sliceArray(EncvHeader.PREFIX_SIZE until bytes.size)
@@ -156,7 +210,7 @@ class EncryptionUtilsTest {
         // the plaintext — this is the property seekable playback depends on.
         for (offset in longArrayOf(0, 1, 15, 16, 17, 4096, 65537)) {
             val cipher =
-                EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv, offset)
+                EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv, kdf, offset)
             val decrypted = cipher.doFinal(ciphertext, offset.toInt(), 1024)
             val expected = plaintext.sliceArray(offset.toInt() until offset.toInt() + 1024)
             assertArrayEquals("offset $offset", expected, decrypted)
@@ -186,6 +240,8 @@ class EncryptionUtilsTest {
         val header = EncvHeader.fromBytes(after)
         assertEquals(270, header.rotationDegrees)
         assertTrue(header.isAuthenticated)
+        assertEquals(EncvHeader.VERSION_KDF, header.version)
+        assertEquals(VideoKdf.DEFAULT, header.kdf)
         // The ciphertext (and salt/iv) is untouched — only the header changed and the
         // trailer was appended.
         assertArrayEquals(
@@ -210,11 +266,12 @@ class EncryptionUtilsTest {
 
         // The ciphertext region (trailer excluded) still decrypts to the plaintext.
         val bytes = file.readBytes()
+        val kdf = EncvHeader.fromBytes(bytes).kdf
         val salt = bytes.sliceArray(16 until 32)
         val iv = bytes.sliceArray(32 until 48)
         val ciphertext =
             bytes.sliceArray(EncvHeader.PREFIX_SIZE until bytes.size - EncvHeader.TRAILER_SIZE)
-        val cipher = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv)
+        val cipher = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv, kdf)
         assertArrayEquals(plaintext, cipher.doFinal(ciphertext))
     }
 
@@ -281,7 +338,9 @@ class EncryptionUtilsTest {
         val plaintext = Random.nextBytes(10_000)
         val salt = Random.nextBytes(16)
         val iv = Random.nextBytes(16)
-        val cipher = EncryptionUtils.ctrCipherAt(Cipher.ENCRYPT_MODE, password, salt, iv)
+        val cipher = EncryptionUtils.ctrCipherAt(
+            Cipher.ENCRYPT_MODE, password, salt, iv, VideoKdf.LEGACY
+        )
         val file = File.createTempFile("encv-v2", ".encv").apply { deleteOnExit() }
         file.writeBytes(
             EncvHeader(version = EncvHeader.VERSION_CTR).toBytes() + salt + iv +
@@ -293,9 +352,11 @@ class EncryptionUtilsTest {
         val header = EncvHeader.fromFile(file)
         assertEquals(EncvHeader.VERSION_CTR, header.version)
         assertEquals(0, header.trailerSize)
+        // Pre-v4 files always derive with the legacy parameters.
+        assertEquals(VideoKdf.LEGACY, header.kdf)
 
         val bytes = file.readBytes()
-        val decrypt = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv)
+        val decrypt = EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv, header.kdf)
         assertArrayEquals(
             plaintext,
             decrypt.doFinal(bytes.sliceArray(EncvHeader.PREFIX_SIZE until bytes.size))

@@ -31,9 +31,8 @@ enum class EncvVerification {
 @Suppress("SpellCheckingInspection")
 internal class EncryptionUtils {
     companion object {
-        private const val PBKDF2_ITERATIONS = 65536
         private const val KEY_BITS = 256
-        private const val KEY_CACHE_MAX_SIZE = 8
+        private const val KEY_CACHE_MAX_SIZE = 16
 
         // GCM authenticated encryption for photos/thumbnails and the vault verifier.
         private const val GCM_NONCE_BYTES = 12
@@ -55,12 +54,14 @@ internal class EncryptionUtils {
         // [MAX_ITERATIONS] so a crafted header can't stall the app.
         const val IMAGE_ITERATIONS = 210_000
         const val THUMBNAIL_ITERATIONS = 65_000
-        private const val MAX_ITERATIONS = 10_000_000
+        const val MAX_ITERATIONS = 2_000_000
 
         // PBKDF2 costs ~1ms per 1k iterations on a phone. Video playback re-opens the
         // file on seeks and the viewer revisits files on prev/next, so derived keys are
         // cached per (algorithm, iterations, salt, password). Must be cleared when the
-        // app locks (see AESCameraApplication).
+        // app locks (see AESCameraApplication). The cache is also how keys are
+        // pre-derived: prewarmImageKey/prewarmVideoKey put the key for a salt generated
+        // ahead of time into the cache, and the later encrypt with that salt is a hit.
         private val keyCache =
             object : LinkedHashMap<String, SecretKeySpec>(KEY_CACHE_MAX_SIZE, 0.75f, true) {
                 override fun removeEldestEntry(
@@ -75,13 +76,35 @@ internal class EncryptionUtils {
             keyCache.clear()
         }
 
+        /** Legacy CBC photos: PBKDF2-HMAC-SHA1 at the fixed legacy cost. */
         @Synchronized
         private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec =
-            deriveKeyCached("PBKDF2WithHmacSHA1", password, salt, PBKDF2_ITERATIONS)
+            deriveKeyCached(VideoKdf.LEGACY.algorithm, password, salt, VideoKdf.LEGACY.iterations)
 
         @Synchronized
         private fun deriveKeySha256(password: String, salt: ByteArray, iterations: Int): SecretKeySpec =
             deriveKeyCached("PBKDF2WithHmacSHA256", password, salt, iterations)
+
+        /** Video keys: the parameters come from the file's header ([EncvHeader.kdf]). */
+        @Synchronized
+        private fun deriveVideoKey(password: String, salt: ByteArray, kdf: VideoKdf): SecretKeySpec =
+            deriveKeyCached(kdf.algorithm, password, salt, kdf.iterations)
+
+        /** A fresh random salt for a photo or video key. */
+        fun newSalt(): ByteArray = ByteArray(IMAGE_SALT_BYTES).apply { SecureRandom().nextBytes(this) }
+
+        /**
+         * Derives the photo key for [salt] now so that a later [encryptImage] with the
+         * same salt pays nothing. Call off the main thread while the camera is idle.
+         */
+        fun prewarmImageKey(password: String, salt: ByteArray, iterations: Int = IMAGE_ITERATIONS) {
+            deriveKeySha256(password, salt, iterations)
+        }
+
+        /** Video counterpart of [prewarmImageKey]: the salt goes to [createEncryptedVideoOutputStream]. */
+        fun prewarmVideoKey(password: String, salt: ByteArray, kdf: VideoKdf = VideoKdf.DEFAULT) {
+            deriveVideoKey(password, salt, kdf)
+        }
 
         private fun deriveKeyCached(
             algorithm: String,
@@ -145,9 +168,10 @@ internal class EncryptionUtils {
         fun encryptImage(
             data: ByteArray,
             password: String,
-            iterations: Int = IMAGE_ITERATIONS
+            iterations: Int = IMAGE_ITERATIONS,
+            salt: ByteArray = newSalt()
         ): ByteArray {
-            val salt = ByteArray(IMAGE_SALT_BYTES).apply { SecureRandom().nextBytes(this) }
+            require(salt.size == IMAGE_SALT_BYTES) { "Salt must be $IMAGE_SALT_BYTES bytes" }
             val key = deriveKeySha256(password, salt, iterations)
             return IMAGE_MAGIC + byteArrayOf(IMAGE_VERSION.toByte()) + intToBe(iterations) +
                     salt + gcmEncrypt(key, data)
@@ -230,7 +254,7 @@ internal class EncryptionUtils {
         }
 
         // ---------------------------------------------------------------------------------
-        // AES/CTR — videos (.encv v2): [header(16)][salt(16)][iv(16)][ciphertext]
+        // AES/CTR — videos (.encv v2+): [header(16)][salt(16)][iv(16)][ciphertext]
         //
         // CTR keystream block n = AES(key, iv + n), so any plaintext offset can be
         // decrypted independently: jump the counter by offset/16 blocks and discard
@@ -257,17 +281,19 @@ internal class EncryptionUtils {
 
         /**
          * Creates an AES/CTR/NoPadding cipher positioned at [plaintextOffset] of the
-         * stream that was encrypted with [salt]/[iv]. Works for both encryption and
-         * decryption (CTR is symmetric), [mode] only affects the Cipher API contract.
+         * stream that was encrypted with [salt]/[iv] under the key derived with [kdf]
+         * (from the file's header). Works for both encryption and decryption (CTR is
+         * symmetric), [mode] only affects the Cipher API contract.
          */
         fun ctrCipherAt(
             mode: Int,
             password: String,
             salt: ByteArray,
             iv: ByteArray,
+            kdf: VideoKdf,
             plaintextOffset: Long = 0
         ): Cipher {
-            val secretKey = deriveKey(password, salt)
+            val secretKey = deriveVideoKey(password, salt, kdf)
             val counter = addToCounter(iv, plaintextOffset / 16)
 
             val cipher = Cipher.getInstance("AES/CTR/NoPadding")
@@ -291,18 +317,20 @@ internal class EncryptionUtils {
          * unverified file — the crash case).
          *
          * Used as the sink of the video recording pipe drain — plaintext never
-         * touches disk.
+         * touches disk. [salt] may be one whose key was pre-derived with
+         * [prewarmVideoKey], so that recording starts without paying the derivation.
          */
         fun createEncryptedVideoOutputStream(
             outputFile: File,
             password: String,
-            header: EncvHeader
+            header: EncvHeader,
+            salt: ByteArray = newSalt()
         ): EncryptedVideoOutput {
-            val salt = ByteArray(16).apply { SecureRandom().nextBytes(this) }
-            val iv = ByteArray(16).apply { SecureRandom().nextBytes(this) }
+            require(salt.size == EncvHeader.SALT_SIZE) { "Salt must be ${EncvHeader.SALT_SIZE} bytes" }
+            val iv = ByteArray(EncvHeader.IV_SIZE).apply { SecureRandom().nextBytes(this) }
 
-            val cipher = ctrCipherAt(Cipher.ENCRYPT_MODE, password, salt, iv)
-            val mac = videoMac(password, salt)
+            val cipher = ctrCipherAt(Cipher.ENCRYPT_MODE, password, salt, iv, header.kdf)
+            val mac = videoMac(password, salt, header.kdf)
 
             val fileStream = FileOutputStream(outputFile)
             try {
@@ -346,7 +374,7 @@ internal class EncryptionUtils {
                         return EncvVerification.FAILED
                     }
 
-                    val mac = videoMac(password, salt)
+                    val mac = videoMac(password, salt, header.kdf)
                     val buffer = ByteArray(256 * 1024)
                     var remaining = trailerStart - EncvHeader.PREFIX_SIZE
                     raf.seek(EncvHeader.PREFIX_SIZE.toLong())
@@ -385,8 +413,8 @@ internal class EncryptionUtils {
          * string (one HMAC block — effectively HKDF-expand) so the encryption and
          * authentication keys stay domain-separated.
          */
-        private fun videoMac(password: String, salt: ByteArray): Mac {
-            val fileKey = deriveKey(password, salt)
+        private fun videoMac(password: String, salt: ByteArray, kdf: VideoKdf): Mac {
+            val fileKey = deriveVideoKey(password, salt, kdf)
             val kdf = Mac.getInstance("HmacSHA256")
             kdf.init(SecretKeySpec(fileKey.encoded, "HmacSHA256"))
             val macKey = kdf.doFinal(VIDEO_MAC_INFO)

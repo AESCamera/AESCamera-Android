@@ -36,14 +36,17 @@ object EncvDurationReader {
                 if (totalPlaintext < TsPtsParser.TS_PACKET_SIZE) return C.TIME_UNSET
 
                 val headLength = minOf(totalPlaintext, SEARCH_BYTES.toLong()).toInt()
-                val head = decryptRange(raf, password, salt, iv, 0L, headLength)
+                val head = decryptRange(raf, password, salt, iv, parsedHeader, 0L, headLength)
                 val firstPts = TsPtsParser.findFirstPts(head) ?: return C.TIME_UNSET
 
                 // Keep the tail chunk packet-aligned relative to the stream start.
                 var tailStart = maxOf(0L, totalPlaintext - SEARCH_BYTES)
                 tailStart -= tailStart % TsPtsParser.TS_PACKET_SIZE
                 val tail =
-                    decryptRange(raf, password, salt, iv, tailStart, (totalPlaintext - tailStart).toInt())
+                    decryptRange(
+                        raf, password, salt, iv, parsedHeader, tailStart,
+                        (totalPlaintext - tailStart).toInt()
+                    )
                 val lastPts = TsPtsParser.findLastPts(tail) ?: return C.TIME_UNSET
 
                 if (lastPts <= firstPts) return C.TIME_UNSET
@@ -59,11 +62,13 @@ object EncvDurationReader {
         password: String,
         salt: ByteArray,
         iv: ByteArray,
+        header: EncvHeader,
         plaintextOffset: Long,
         length: Int
     ): ByteArray {
-        val cipher =
-            EncryptionUtils.ctrCipherAt(Cipher.DECRYPT_MODE, password, salt, iv, plaintextOffset)
+        val cipher = EncryptionUtils.ctrCipherAt(
+            Cipher.DECRYPT_MODE, password, salt, iv, header.kdf, plaintextOffset
+        )
         raf.seek(EncvHeader.PREFIX_SIZE + plaintextOffset)
         val buffer = ByteArray(length)
         raf.readFully(buffer)
