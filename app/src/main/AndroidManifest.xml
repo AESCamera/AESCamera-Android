@@ -12,6 +12,7 @@
     <application
         android:name=".AESCameraApplication"
         android:allowBackup="false"
+        android:hasFragileUserData="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -66,6 +67,9 @@
             android:exported="false" />
         <activity
             android:name=".list.FilesListActivity"
+            android:exported="false" />
+        <activity
+            android:name=".settings.SettingsActivity"
             android:exported="false" />
         <!-- Locked to portrait: rotating would recreate the activity and kill an active
              recording. CameraView tracks physical device orientation with its own sensor

@@ -17,6 +17,7 @@
         <item quantity="other">Delete these %d items permanently? This cannot be undone.</item>
     </plurals>
     <string name="share">Share</string>
+    <string name="export">Export</string>
     <string name="add_to_vault">Add to Vault</string>
 
     <string name="files_list_title">Files</string>
@@ -52,6 +53,38 @@
     <string name="import_rejected_not_encrypted">This is not an AES Camera file (.enc or .encv)</string>
     <string name="import_rejected_unreadable">The shared file could not be read</string>
     <string name="import_rejected_too_large">The shared file is too large to open</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_vault_location">Vault location</string>
+    <string name="settings_location_private">Private app storage</string>
+    <string name="settings_location_private_desc">Only AES Camera can read the vault (or a rooted device). Use Export to back it up. The vault is removed if the app is uninstalled without keeping its data.</string>
+    <string name="settings_location_shared">Shared storage</string>
+    <string name="settings_location_shared_desc">Android/media/… on shared storage: file managers, USB and apps with storage access can see, copy and delete the encrypted files. File names show when each photo and video was taken.</string>
+    <string name="settings_backup">Backup</string>
+    <string name="settings_backup_note">Backups are the encrypted files as they are. They can only be opened with AES Camera and your password.</string>
+    <string name="settings_export">Export vault…</string>
+    <string name="settings_restore">Restore files…</string>
+    <string name="settings_capture">Capture</string>
+    <string name="settings_rapid_capture">Rapid capture</string>
+    <string name="settings_rapid_capture_desc">Keep the shutter active while earlier photos are still being encrypted and saved. Needs a device with enough memory for a few full-size photos at once.</string>
+    <string name="move_vault_title">Move vault?</string>
+    <string name="move_vault_message">%1$d files will be moved to %2$s. Nothing is re-encrypted. Keep the app open until the move finishes.</string>
+    <string name="move_vault_action">Move</string>
+    <string name="moving_vault">Moving vault…</string>
+    <string name="move_vault_done">Vault moved</string>
+    <string name="move_vault_failed">The vault could not be moved. Nothing was changed.</string>
+    <string name="move_vault_cancelled">Move cancelled. Nothing was changed.</string>
+    <string name="progress_count">%1$s %2$d / %3$d</string>
+    <string name="export_nothing">There is nothing to export yet</string>
+    <string name="exporting">Exporting…</string>
+    <string name="export_done">Exported %1$d files</string>
+    <string name="export_partial">Exported %1$d files, %2$d failed</string>
+    <string name="export_cancelled">Export cancelled</string>
+    <string name="export_failed">Export failed. Check that the folder can be written to.</string>
+    <string name="restoring">Restoring…</string>
+    <string name="restore_done">Restored %1$d files. Skipped %2$d encrypted with a different password and %3$d that are not AES Camera files.</string>
+    <string name="restore_cancelled">Restore cancelled</string>
+    <string name="restore_failed">Restore failed</string>
 
     <string name="decrypted_video_player_title">Decrypted Video</string>
     <string name="video_playback_failed_message">Failed to play video! Check that the key is correct.</string>

@@ -2,7 +2,6 @@ package dev.dineshkumar.aescamera.utils
 
 import android.content.Context
 import android.util.Log
-import dev.dineshkumar.aescamera.R
 import java.io.File
 import java.security.SecureRandom
 
@@ -34,17 +33,8 @@ object VaultUtils {
     // Paid once per vault scanned at unlock, off the main thread (dialog_unlocking).
     private const val VERIFIER_ITERATIONS = 210_000
 
-    /** The directory under which all vaults live. */
-    fun baseDir(context: Context): File {
-        val mediaDir = context.externalMediaDirs.firstOrNull()?.let {
-            File(it, context.resources.getString(R.string.app_name)).apply { mkdirs() }
-        }
-        if (mediaDir == null || !mediaDir.exists()) {
-            // No shared storage available; keep the historic internal-storage fallback.
-            return context.filesDir
-        }
-        return mediaDir
-    }
+    /** The directory under which all vaults live (see [VaultStorage]). */
+    fun baseDir(context: Context): File = VaultStorage.currentBaseDir(context)
 
     /** Returns the existing vault for [key], or null if this key has none yet. */
     fun findVault(key: String, context: Context): File? = findVault(key, baseDir(context))

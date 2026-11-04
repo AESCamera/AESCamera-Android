@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <external-path name="external_files" path="." />
+    <!-- Only the vault trees are ever shared, never the whole external storage. -->
+    <external-media-path name="shared_vault" path="AES Camera/" />
+    <files-path name="private_vault" path="vault/" />
 </paths>

@@ -50,6 +50,17 @@ class AESCameraApplication : Application() {
         private set
 
     /**
+     * Re-resolves the vault directory after the vault tree was moved (Settings). Scans
+     * verifiers (PBKDF2 per vault), so call off the main thread.
+     */
+    fun relocateVault() {
+        val currentKey = key ?: return
+        outputDirectory = VaultUtils.findVault(currentKey, this)
+        // Observers (gallery, viewers) rebuild against the new directory.
+        keyLiveData.postValue(currentKey)
+    }
+
+    /**
      * Returns the vault directory for the current key, creating it on first use. Runs a
      * PBKDF2 derivation when it creates, so call off the main thread. Null when locked.
      */

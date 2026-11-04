@@ -91,6 +91,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.4.1")
 
     implementation("androidx.legacy:legacy-support-v4:1.0.0")
+    // DocumentFile for export/restore through the system file picker
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.recyclerview:recyclerview:1.3.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.5.2")

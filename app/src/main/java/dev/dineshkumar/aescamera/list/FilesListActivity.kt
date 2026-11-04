@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.GridLayoutManager
@@ -13,6 +15,10 @@ import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
+import dev.dineshkumar.aescamera.settings.SettingsActivity
+import dev.dineshkumar.aescamera.utils.MigrationCancelledException
+import dev.dineshkumar.aescamera.utils.ProgressDialogController
+import dev.dineshkumar.aescamera.utils.VaultExporter
 import dev.dineshkumar.aescamera.utils.actionBarSize
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.viewer.GalleryNav
@@ -23,6 +29,12 @@ class FilesListActivity : ProtectedBaseActivity() {
     private lateinit var binding: ActivityFilesListBinding
     private lateinit var adapter: FileAdapter
     private var optionsMenu: Menu? = null
+
+    // Export the selected files (ciphertext) into a folder the user picks.
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let { exportSelectedItems(it) }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,11 +104,13 @@ class FilesListActivity : ProtectedBaseActivity() {
         if (selectedCount > 0) {
             optionsMenu?.findItem(R.id.action_delete)?.isVisible = true
             optionsMenu?.findItem(R.id.action_share)?.isVisible = true
+            optionsMenu?.findItem(R.id.action_export)?.isVisible = true
             supportActionBar?.title =
                 resources.getQuantityString(R.plurals.selected_count, selectedCount, selectedCount)
         } else {
             optionsMenu?.findItem(R.id.action_delete)?.isVisible = false
             optionsMenu?.findItem(R.id.action_share)?.isVisible = false
+            optionsMenu?.findItem(R.id.action_export)?.isVisible = false
             supportActionBar?.title = getString(R.string.files_list_title)
         }
     }
@@ -175,6 +189,41 @@ class FilesListActivity : ProtectedBaseActivity() {
         adapter.clearSelection()
     }
 
+    private fun exportSelectedItems(treeUri: Uri) {
+        val files = adapter.getSelectedItems()
+        if (files.isEmpty()) {
+            return
+        }
+        val progress = ProgressDialogController(this, R.string.exporting, cancellable = true)
+        progress.show()
+
+        Thread {
+            val outcome = runCatching {
+                VaultExporter.export(this, treeUri, files, { progress.cancelled }) { done, total ->
+                    runOnUiThread { progress.progress(done, total) }
+                }
+            }
+            runOnUiThread {
+                progress.dismiss()
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                val message = outcome.fold(
+                    onSuccess = { summary ->
+                        if (summary.failed == 0) getString(R.string.export_done, summary.exported)
+                        else getString(R.string.export_partial, summary.exported, summary.failed)
+                    },
+                    onFailure = { error ->
+                        if (error is MigrationCancelledException) getString(R.string.export_cancelled)
+                        else getString(R.string.export_failed)
+                    }
+                )
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                adapter.clearSelection()
+            }
+        }.start()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.file_list_menu, menu)
         optionsMenu = menu
@@ -214,6 +263,18 @@ class FilesListActivity : ProtectedBaseActivity() {
 
             R.id.action_share -> {
                 shareSelectedItems()
+                true
+            }
+
+            R.id.action_export -> {
+                if (adapter.getSelectedItemsCount() > 0) {
+                    exportLauncher.launch(null)
+                }
+                true
+            }
+
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
 
