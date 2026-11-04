@@ -1,12 +1,10 @@
 package dev.dineshkumar.aescamera
 
 import android.os.Bundle
-import android.text.InputType
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.widget.CheckBox
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -14,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 
 abstract class ProtectedBaseActivity : AppCompatActivity() {
     private var dialogOpen: Boolean = false
+    private var passwordDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +35,15 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
         checkPassword()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // A dialog left open across a rotation leaks its window; the recreated
+        // activity shows a fresh one from onCreate.
+        passwordDialog?.let { runCatching { it.dismiss() } }
+        passwordDialog = null
+        dialogOpen = false
+    }
+
     private fun checkPassword() {
         val app = application as AESCameraApplication
 
@@ -53,22 +61,13 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
         val inflater = LayoutInflater.from(this)
         val dialogView = inflater.inflate(R.layout.dialog_key, null)
         val passwordEditText = dialogView.findViewById<EditText>(R.id.keyText)
-        val showPasswordCheckBox = dialogView.findViewById<CheckBox>(R.id.showKey)
-
-        showPasswordCheckBox.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                passwordEditText.inputType = EditorInfo.TYPE_CLASS_TEXT
-            } else {
-                passwordEditText.inputType =
-                    InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            }
-        }
 
         builder.setView(dialogView)
             .setTitle(getString(R.string.enter_encryption_key_title))
             .setCancelable(false)
             .setPositiveButton("OK") { _, _ ->
                 dialogOpen = false
+                passwordDialog = null
 
                 val password = passwordEditText.text.toString()
                 if (password.isNotEmpty()) {
@@ -78,8 +77,30 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
                 }
             }
 
+        val dialog = builder.create()
+        // A dialog has its own window, which does not inherit the activity's
+        // FLAG_SECURE: without this, screenshots and screen recordings blank the
+        // activity but capture the dialog — including a password shown with the eye
+        // toggle.
+        dialog.window?.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
+
         dialogOpen = true
-        builder.create().show()
+        passwordDialog = dialog
+        dialog.show()
+
+        // The keyboard's Done action unlocks, like tapping OK.
+        passwordEditText.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            } else {
+                false
+            }
+        }
+        passwordEditText.requestFocus()
     }
 
     /**

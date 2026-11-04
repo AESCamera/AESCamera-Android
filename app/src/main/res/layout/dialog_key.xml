@@ -1,29 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/keyText"
+    <!--
+      The eye toggle switches the transformation method, not the input type, so the
+      field stays a password field for the keyboard (no suggestions, no personal
+      dictionary) while the user can still check what they typed.
+    -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/keyLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="20dp"
         android:layout_marginTop="10dp"
         android:layout_marginEnd="20dp"
-        android:autofillHints=""
         android:hint="@string/enter_encryption_key"
-        android:inputType="textPassword"
-        android:textSize="15sp" />
+        app:endIconMode="password_toggle">
 
-    <CheckBox
-        android:id="@+id/showKey"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginTop="10dp"
-        android:text="@string/show_key"
-        android:textSize="15sp"
-        />
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/keyText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints="password"
+            android:imeOptions="actionDone"
+            android:inputType="textPassword"
+            android:maxLines="1"
+            android:textSize="15sp" />
+
+    </com.google.android.material.textfield.TextInputLayout>
 
 </LinearLayout>
