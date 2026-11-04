@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.MutableLiveData
+import dev.dineshkumar.aescamera.importer.ImportActivity
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.VaultUtils
 import java.io.File
@@ -76,6 +77,11 @@ class AESCameraApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Files staged by ImportActivity are ciphertext, but there is no reason to keep
+        // them beyond the session that opened them.
+        Thread { ImportActivity.importCacheDir(this).deleteRecursively() }.start()
+
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityStarted(activity: Activity) {

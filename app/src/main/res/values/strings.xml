@@ -34,6 +34,24 @@
     <string name="image_decryption_failed_message">Failed to decrypt image!</string>
     <string name="image_decode_failed_message">Failed to decode image!</string>
     <string name="file_added_to_vault_message">File added to vault</string>
+    <string name="vault_import_wrong_password">This file was encrypted with a different password</string>
+    <string name="vault_import_failed">Could not add the file to the vault</string>
+
+    <string name="import_confirm_title">Open encrypted file?</string>
+    <string name="import_confirm_one">Open %1$s shared from %2$s? It will be decrypted on screen with your password.</string>
+    <string name="import_confirm_many">Open %1$d encrypted files shared from %2$s? They will be decrypted on screen with your password.</string>
+    <plurals name="import_skipped">
+        <item quantity="one">%d file was skipped because it is not an AES Camera file.</item>
+        <item quantity="other">%d files were skipped because they are not AES Camera files.</item>
+    </plurals>
+    <string name="import_unknown_sender">another app</string>
+    <string name="import_open">Open</string>
+    <string name="importing_message">Importing…</string>
+    <string name="import_failed_copy">The shared file could not be read</string>
+    <string name="import_rejected_unsupported">AES Camera can only open files shared by other apps</string>
+    <string name="import_rejected_not_encrypted">This is not an AES Camera file (.enc or .encv)</string>
+    <string name="import_rejected_unreadable">The shared file could not be read</string>
+    <string name="import_rejected_too_large">The shared file is too large to open</string>
 
     <string name="decrypted_video_player_title">Decrypted Video</string>
     <string name="video_playback_failed_message">Failed to play video! Check that the key is correct.</string>

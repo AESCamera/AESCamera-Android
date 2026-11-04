@@ -1,25 +1,21 @@
 package dev.dineshkumar.aescamera.viewer
 
 import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.os.Build.VERSION
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityDecryptedImageViewerBinding
-import dev.dineshkumar.aescamera.utils.CommonUtils
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.ImageUtils
 import dev.dineshkumar.aescamera.utils.ThumbnailUtils
+import dev.dineshkumar.aescamera.utils.VaultImportResult
+import dev.dineshkumar.aescamera.utils.VaultImporter
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -27,18 +23,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/**
+ * Shows a decrypted photo. Two modes, both fed only by this app (the activity is not
+ * exported):
+ *
+ * - Gallery: [GalleryNav.EXTRA_PATHS] + [GalleryNav.EXTRA_INDEX], the whole vault in
+ *   order, previous/next handing off to the player at video items.
+ * - Imported: [EXTRA_IMPORTED_PATHS], files another app shared with us, already staged in
+ *   our cache by ImportActivity. "Add to Vault" copies the ciphertext into the vault.
+ */
 class DecryptedImageViewerActivity : ProtectedBaseActivity() {
 
     private lateinit var binding: ActivityDecryptedImageViewerBinding
-    private var fileUri: Uri? = null
-    private var fileName: String? = null;
     private var menu: Menu? = null
 
-    // Gallery navigation: the full ordered vault list (images + videos) and where we are
-    // in it. Null when launched externally (e.g. a shared file from another app), in
-    // which case there is a single image and no prev/next.
-    private var galleryPaths: List<String>? = null
+    private var paths: List<String> = emptyList()
+    private var isImported = false
     private var currentIndex: Int = 0
+
+    private val currentFile: File?
+        get() = paths.getOrNull(currentIndex)?.let { File(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,34 +53,21 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.decrypted_image_viewer_title)
 
-        galleryPaths = intent.getStringArrayListExtra(GalleryNav.EXTRA_PATHS)
-        val paths = galleryPaths
-
-        if (paths != null) {
-            // Internal gallery mode: resolve the current item from the shared list.
-            currentIndex = intent.getIntExtra(GalleryNav.EXTRA_INDEX, 0).coerceIn(paths.indices)
-            fileUri = providerUriFor(paths[currentIndex])
-        } else {
-            // External mode: a single file handed in by another app.
-            fileUri = intent.data ?: if (VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(Intent.EXTRA_STREAM)
-            } else {
-                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-            }
-        }
-
-        val fileUri = this.fileUri
-
-        if (fileUri != null) {
-            fileName = getFileName(fileUri)
-            supportActionBar?.title = fileName ?: getString(R.string.decrypted_image_viewer_title)
-            loadDecryptedImage()
-        } else {
+        val galleryPaths = intent.getStringArrayListExtra(GalleryNav.EXTRA_PATHS)
+        val importedPaths = intent.getStringArrayListExtra(EXTRA_IMPORTED_PATHS)
+        val list = galleryPaths ?: importedPaths
+        if (list.isNullOrEmpty()) {
             Toast.makeText(this, getString(R.string.error_no_file_selected), Toast.LENGTH_SHORT)
                 .show()
             finish()
+            return
         }
+        paths = list
+        isImported = galleryPaths == null
+        currentIndex = intent.getIntExtra(GalleryNav.EXTRA_INDEX, 0).coerceIn(paths.indices)
 
+        supportActionBar?.title = currentFile?.name
+        loadDecryptedImage()
         updateButtons()
 
         (application as AESCameraApplication).keyLiveData.observe(this) {
@@ -92,34 +83,6 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
         binding.decryptedImageViewPrevious.setOnClickListener {
             navigate(-1)
         }
-    }
-
-    private fun providerUriFor(path: String): Uri =
-        FileProvider.getUriForFile(this, "${application.packageName}.provider", File(path))
-
-    private fun getFileName(uri: Uri): String? {
-        var result: String? = null
-        if (uri.scheme == "content") {
-            val cursor = contentResolver.query(uri, null, null, null, null)
-            try {
-                if (cursor != null && cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex != -1) {
-                        result = cursor.getString(nameIndex)
-                    }
-                }
-            } finally {
-                cursor?.close()
-            }
-        }
-        if (result == null) {
-            result = uri.path
-            val cut = result?.lastIndexOf('/')
-            if (cut != -1) {
-                result = result?.substring(cut!! + 1)
-            }
-        }
-        return result
     }
 
     private fun clearError() {
@@ -150,9 +113,7 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
     }
 
     private fun updateButtons() {
-        val paths = galleryPaths
-
-        if (paths == null || paths.size <= 1) {
+        if (paths.size <= 1) {
             binding.decryptedImageViewNext.visibility = View.GONE
             binding.decryptedImageViewPrevious.visibility = View.GONE
             return
@@ -170,35 +131,42 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
     }
 
     /**
-     * Steps [delta] items through the gallery. An image loads here; a video hands off to
+     * Steps [delta] items through the list. An image loads here; a video hands off to
      * the player at that position, so previous/next feels continuous across both types.
      */
     private fun navigate(delta: Int) {
-        val paths = galleryPaths ?: return
         val target = currentIndex + delta
         if (target !in paths.indices) {
             return
         }
 
         if (GalleryNav.isVideo(paths[target])) {
-            startActivity(GalleryNav.intentFor(this, paths, target))
-            finish()
+            if (isImported) {
+                // Imported videos have no shared list; the player stays single-file and
+                // Back returns here.
+                startActivity(
+                    Intent(this, DecryptedVideoPlayerActivity::class.java)
+                        .putExtra(DecryptedVideoPlayerActivity.EXTRA_PATH, paths[target])
+                        .putExtra(DecryptedVideoPlayerActivity.EXTRA_IMPORTED, true)
+                )
+            } else {
+                startActivity(GalleryNav.intentFor(this, paths, target))
+                finish()
+            }
             return
         }
 
         currentIndex = target
-        fileUri = providerUriFor(paths[target])
-        fileName = File(paths[target]).name
-        supportActionBar?.title = fileName
+        supportActionBar?.title = currentFile?.name
         loadDecryptedImage()
         updateButtons()
     }
 
     @OptIn(DelicateCoroutinesApi::class)
     private fun loadDecryptedImage() {
-        val fileUri = this.fileUri;
+        val file = currentFile
 
-        if (fileUri == null) {
+        if (file == null) {
             showError(getString(R.string.error_no_file_selected))
             return
         }
@@ -219,17 +187,14 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
                     return@launch
                 }
 
-                val inputStream = contentResolver.openInputStream(fileUri)
-
-                if (inputStream == null) {
+                if (!file.isFile) {
                     withContext(Dispatchers.Main) {
                         showError(getString(R.string.file_open_failed_message))
                     }
                     return@launch
                 }
 
-                val encryptedBytes = inputStream.readBytes()
-                inputStream.close()
+                val encryptedBytes = file.readBytes()
 
                 val decryptedBytes = runCatching {
                     EncryptionUtils.decryptImage(encryptedBytes, key)
@@ -241,13 +206,10 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
                     return@launch
                 }
 
-                if (fileUri.authority == "${application.packageName}.provider") {
+                // Vault files without a thumbnail (older captures) get one on first view.
+                if (!isImported) {
                     try {
-                        ThumbnailUtils.createImageThumbnail(
-                            app,
-                            fileUri.lastPathSegment ?: CommonUtils.getImageFileName(),
-                            decryptedBytes
-                        )
+                        ThumbnailUtils.createImageThumbnail(app, file.name, decryptedBytes)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to create thumbnail for opened file! ${e.message}", e)
                     }
@@ -266,7 +228,7 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
                 withContext(Dispatchers.Main) {
                     binding.decryptedImageView.setImageBitmap(bitmap)
 
-                    if (fileUri.authority != "${application.packageName}.provider") {
+                    if (isImported) {
                         menu?.findItem(R.id.action_add_to_vault)?.isVisible = true
                     }
                 }
@@ -274,7 +236,9 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
                 Log.e(TAG, "Error: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
-                        this@DecryptedImageViewerActivity, "Error: ${e.message}", Toast.LENGTH_LONG
+                        this@DecryptedImageViewerActivity,
+                        getString(R.string.file_open_failed_message),
+                        Toast.LENGTH_LONG
                     ).show()
                     finish()
                 }
@@ -288,50 +252,36 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
 
     private fun addToVault() {
         val app = application as AESCameraApplication
-        val key = app.key
+        val file = currentFile ?: return
 
-        if (key == null) {
+        if (app.key == null) {
             showError(getString(R.string.enter_key_message))
             return
         }
 
-        val fileUri = this.fileUri
+        menu?.findItem(R.id.action_add_to_vault)?.isEnabled = false
 
-        if (fileUri == null) {
-            showError(getString(R.string.error_no_file_selected))
-            return
-        }
+        // Copy + decrypt-for-thumbnail: off the main thread.
+        Thread {
+            val result = VaultImporter.importFile(app, file, file.name)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                val item = menu?.findItem(R.id.action_add_to_vault)
+                item?.isEnabled = true
+                val message = when (result) {
+                    is VaultImportResult.Success -> {
+                        item?.isVisible = false
+                        R.string.file_added_to_vault_message
+                    }
 
-        val outputDirectory = app.ensureVault() ?: return
-
-        var fileName = this.fileName ?: CommonUtils.getImageFileName()
-
-        if (!fileName.endsWith(".enc")) {
-            fileName = "${fileName}.enc"
-        }
-
-        outputDirectory.mkdirs()
-        val outputFile = File(outputDirectory, fileName)
-
-        // Copy the (already encrypted) file into the vault.
-        contentResolver.openInputStream(fileUri)?.use { inputStream ->
-            outputFile.outputStream().use { outputStream ->
-                inputStream.copyTo(outputStream)
+                    VaultImportResult.WrongPassword -> R.string.vault_import_wrong_password
+                    is VaultImportResult.Failed -> R.string.vault_import_failed
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
-        }
-
-        // The vault copy is ciphertext; the thumbnail needs the decrypted image.
-        // decryptImage handles both the authenticated format and legacy CBC files, so
-        // imports work regardless of which build produced the shared file.
-        try {
-            val decryptedBytes = EncryptionUtils.decryptImage(outputFile.readBytes(), key)
-            ThumbnailUtils.createImageThumbnail(app, fileName, decryptedBytes)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create thumbnail for imported file! ${e.message}", e)
-        }
-
-        Toast.makeText(this, getString(R.string.file_added_to_vault_message), Toast.LENGTH_SHORT)
-            .show()
+        }.start()
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -368,5 +318,8 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
 
     companion object {
         private const val TAG = "DecryptedImageViewer"
+
+        /** Files staged by ImportActivity (absolute paths inside our cache). */
+        const val EXTRA_IMPORTED_PATHS = "imported_paths"
     }
 }

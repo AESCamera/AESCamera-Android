@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -28,6 +29,8 @@ import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.utils.EncvVerification
+import dev.dineshkumar.aescamera.utils.VaultImportResult
+import dev.dineshkumar.aescamera.utils.VaultImporter
 import dev.dineshkumar.aescamera.viewer.datasource.EncryptedCTRDataSourceFactory
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +52,9 @@ import java.io.File
  * MPEG-2 TS carries no rotation metadata, so [PtsSeekableTsExtractor] stamps the rotation
  * stored in the .encv header onto the video track's Format; the player pipeline then
  * rotates the picture and swaps the aspect ratio natively, as it would for a rotated MP4.
+ *
+ * A file staged by ImportActivity ([EXTRA_PATH] + [EXTRA_IMPORTED]) plays the same way
+ * from our cache, with "Add to Vault" to keep it; its playlist is the other staged videos.
  */
 @OptIn(UnstableApi::class)
 class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
@@ -58,6 +64,8 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     private var videoFile: File? = null
     private var verifying = false
     private var verifiedPath: String? = null
+    private var isImported = false
+    private var optionsMenu: Menu? = null
 
     // Gallery navigation: the full ordered vault list (images + videos), the video-only
     // subset ExoPlayer actually holds as a playlist, and whether prev/next may show.
@@ -81,9 +89,11 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
             ?.applySystemBarInsetsAsPadding(top = false)
 
         galleryPaths = intent.getStringArrayListExtra(GalleryNav.EXTRA_PATHS)
+            ?.takeIf { it.isNotEmpty() }
+        isImported = intent.getBooleanExtra(EXTRA_IMPORTED, false)
         val path = galleryPaths?.let { paths ->
             paths[intent.getIntExtra(GalleryNav.EXTRA_INDEX, 0).coerceIn(paths.indices)]
-        } ?: intent.getStringExtra(EXTRA_PATH) ?: intent.data?.path
+        } ?: intent.getStringExtra(EXTRA_PATH)
         val file = path?.let { File(it) }
 
         if (file == null || !file.exists()) {
@@ -385,8 +395,41 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         super.onCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.file_viewer_menu, menu)
-        menu?.findItem(R.id.action_add_to_vault)?.isVisible = false
+        optionsMenu = menu
+        menu?.findItem(R.id.action_add_to_vault)?.isVisible = isImported
         return true
+    }
+
+    /** Copies the staged (imported) recording into the vault; off the main thread. */
+    private fun addToVault() {
+        val app = application as AESCameraApplication
+        val file = videoFile ?: return
+        if (app.key == null) {
+            showError(getString(R.string.enter_key_message))
+            return
+        }
+
+        optionsMenu?.findItem(R.id.action_add_to_vault)?.isEnabled = false
+        Thread {
+            val result = VaultImporter.importFile(app, file, file.name)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                val item = optionsMenu?.findItem(R.id.action_add_to_vault)
+                item?.isEnabled = true
+                val message = when (result) {
+                    is VaultImportResult.Success -> {
+                        item?.isVisible = false
+                        R.string.file_added_to_vault_message
+                    }
+
+                    VaultImportResult.WrongPassword -> R.string.vault_import_wrong_password
+                    is VaultImportResult.Failed -> R.string.vault_import_failed
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+        }.start()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -401,6 +444,11 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
                 true
             }
 
+            R.id.action_add_to_vault -> {
+                addToVault()
+                true
+            }
+
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -408,5 +456,8 @@ class DecryptedVideoPlayerActivity : ProtectedBaseActivity() {
     companion object {
         private const val TAG = "DecryptedVideoPlayer"
         const val EXTRA_PATH = "path"
+
+        /** True when [EXTRA_PATH] is a file staged by ImportActivity, not a vault file. */
+        const val EXTRA_IMPORTED = "imported"
     }
 }
