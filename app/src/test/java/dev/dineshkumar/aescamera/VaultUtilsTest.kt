@@ -6,6 +6,7 @@ import dev.dineshkumar.aescamera.utils.VaultUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -28,6 +29,21 @@ class VaultUtilsTest {
         assertTrue(File(vault, ".vault").isFile)
 
         assertEquals(vault, VaultUtils.openVault("correct horse", base))
+    }
+
+    @Test
+    fun findVaultNeverCreatesOne() {
+        val base = tempFolder.root
+
+        // Unlocking with a key that has no vault must leave the directory tree
+        // untouched: a typo at the password prompt creates nothing.
+        assertNull(VaultUtils.findVault("typo", base))
+        assertEquals(0, base.listFiles()?.size)
+
+        val vault = VaultUtils.createVault("typo", base)
+        assertTrue(File(vault, ".vault").isFile)
+        assertEquals(vault, VaultUtils.findVault("typo", base))
+        assertNull(VaultUtils.findVault("other", base))
     }
 
     @Test

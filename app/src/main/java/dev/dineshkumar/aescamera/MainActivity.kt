@@ -233,28 +233,25 @@ class MainActivity : ProtectedBaseActivity() {
     private fun startRecording() {
         val app = application as AESCameraApplication
         val key = app.key
-        val outputDirectory = app.outputDirectory
         if (key == null) {
             Toast.makeText(this, "Key not found", Toast.LENGTH_SHORT).show()
             return
         }
-        if (outputDirectory == null) {
-            Toast.makeText(this, "No output directory set", Toast.LENGTH_SHORT).show()
-            return
-        }
 
-        val outputFile = File(outputDirectory, CommonUtils.getVideoFileName())
-
-        // Setting up the recording derives an encryption key (PBKDF2, ~100 ms), so it
-        // runs off the main thread; controls stay disabled until the recorder starts,
-        // which also prevents a double-tap from starting two recordings.
+        // Setting up the recording derives an encryption key (PBKDF2, ~100 ms) and may
+        // create the vault on first use, so it runs off the main thread; controls stay
+        // disabled until the recorder starts, which also prevents a double-tap from
+        // starting two recordings.
         disableControls()
         Thread {
             // No plaintext fallback: if the encryption pipeline can't be set up, we
             // don't record at all. mkdirs: the vault dir lives on shared storage and
             // can vanish underneath us; recreate it rather than failing with ENOENT.
             val recording = try {
+                val outputDirectory = app.ensureVault()
+                    ?: throw IllegalStateException("Locked while starting the recording")
                 outputDirectory.mkdirs()
+                val outputFile = File(outputDirectory, CommonUtils.getVideoFileName())
                 EncryptedVideoRecording(outputFile, key)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set up encrypted recording: ${e.message}", e)
@@ -439,15 +436,8 @@ class MainActivity : ProtectedBaseActivity() {
         isCapturingPhoto = false
 
         val key = app.key
-        val outputDirectory = app.outputDirectory
         if (key == null) {
             Toast.makeText(this@MainActivity, "Key not found", Toast.LENGTH_SHORT).show()
-            enableControls()
-            return
-        }
-        if (outputDirectory == null) {
-            Toast.makeText(this@MainActivity, "No output directory set", Toast.LENGTH_SHORT)
-                .show()
             enableControls()
             return
         }
@@ -460,8 +450,10 @@ class MainActivity : ProtectedBaseActivity() {
         Thread {
             // The vault dir lives on shared storage and can vanish underneath us (file
             // managers, MediaProvider cleanup); recreate it and surface write failures
-            // instead of crashing.
+            // instead of crashing. ensureVault creates the vault on the first save.
             try {
+                val outputDirectory = app.ensureVault()
+                    ?: throw IllegalStateException("Locked while saving the photo")
                 outputDirectory.mkdirs()
                 val encryptedFile = File(outputDirectory, fileName)
                 EncryptionUtils.encryptImage(pictureResult.data, key).let {

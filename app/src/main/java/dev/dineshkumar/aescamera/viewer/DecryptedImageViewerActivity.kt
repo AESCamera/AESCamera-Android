@@ -302,7 +302,7 @@ class DecryptedImageViewerActivity : ProtectedBaseActivity() {
             return
         }
 
-        val outputDirectory = app.outputDirectory ?: return
+        val outputDirectory = app.ensureVault() ?: return
 
         var fileName = this.fileName ?: CommonUtils.getImageFileName()
 

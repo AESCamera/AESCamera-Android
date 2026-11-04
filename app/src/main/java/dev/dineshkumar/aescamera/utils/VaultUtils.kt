@@ -16,6 +16,11 @@ import java.security.SecureRandom
  * guessing a key from the directory tree costs a full PBKDF2 derivation per guess, the
  * same as attacking an encrypted media file.
  *
+ * Any key opens a vault — there is deliberately no "wrong password" signal. Unlock uses
+ * [findVault], which never creates anything, and the app calls [createVault] only when
+ * the first file is saved, so a mistyped password leaves no directory behind and does
+ * not add a verifier check to every later unlock.
+ *
  * Older layouts are upgraded on first unlock: a pre-authentication AES/CBC verifier is
  * rewritten in the sealed format, and legacy MD5(key)-named directories (GPU
  * brute-forceable) are adopted and renamed.
@@ -29,8 +34,8 @@ object VaultUtils {
     // Paid once per vault scanned at unlock, off the main thread (dialog_unlocking).
     private const val VERIFIER_ITERATIONS = 210_000
 
-    /** Returns the vault directory for [key], creating it if none exists yet. */
-    fun openVault(key: String, context: Context): File {
+    /** The directory under which all vaults live. */
+    fun baseDir(context: Context): File {
         val mediaDir = context.externalMediaDirs.firstOrNull()?.let {
             File(it, context.resources.getString(R.string.app_name)).apply { mkdirs() }
         }
@@ -38,11 +43,24 @@ object VaultUtils {
             // No shared storage available; keep the historic internal-storage fallback.
             return context.filesDir
         }
-        return openVault(key, mediaDir)
+        return mediaDir
     }
 
-    /** [openVault] core, separated from [Context] for unit testing. */
-    fun openVault(key: String, baseDir: File): File {
+    /** Returns the existing vault for [key], or null if this key has none yet. */
+    fun findVault(key: String, context: Context): File? = findVault(key, baseDir(context))
+
+    /** Creates a new vault for [key]. Only call when [findVault] returned null. */
+    fun createVault(key: String, context: Context): File = createVault(key, baseDir(context))
+
+    /** Returns the vault directory for [key], creating it if none exists yet. */
+    fun openVault(key: String, baseDir: File): File =
+        findVault(key, baseDir) ?: createVault(key, baseDir)
+
+    /**
+     * [findVault] core, separated from [Context] for unit testing. Never creates a
+     * vault, but does upgrade a legacy one it finds (verifier format, MD5 name).
+     */
+    fun findVault(key: String, baseDir: File): File? {
         // An existing vault whose verifier this key opens.
         baseDir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }?.forEach { dir ->
             if (verifierMatchesOrUpgrades(File(dir, VERIFIER_FILE_NAME), dir, key)) {
@@ -58,7 +76,12 @@ object VaultUtils {
             return renameIfLegacy(legacyDir, key)
         }
 
-        // No vault for this key yet: create one under a random name.
+        return null
+    }
+
+    /** [createVault] core: a new vault under a random name, sealed with [key]. */
+    fun createVault(key: String, baseDir: File): File {
+        baseDir.mkdirs()
         val newDir = File(baseDir, randomVaultName()).apply { mkdirs() }
         writeVerifier(newDir, key)
         return newDir

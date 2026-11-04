@@ -26,10 +26,19 @@ class AESCameraApplication : Application() {
                 return
             }
 
-            outputDirectory = VaultUtils.openVault(value, this)
+            // Only an existing vault is opened here. A key without a vault stays
+            // directory-less until the first save (see ensureVault), so a mistyped
+            // password leaves nothing behind.
+            outputDirectory = VaultUtils.findVault(value, this)
 
             keyLiveData.postValue(value)
         }
+
+    /**
+     * The vault directory of the current key, or null while locked or while the key has
+     * no vault yet. Writers call [ensureVault] instead; readers (gallery) treat null as
+     * an empty vault.
+     */
     var outputDirectory: File? = null
         private set(value) {
             field = value
@@ -38,6 +47,23 @@ class AESCameraApplication : Application() {
         }
     var thumbnailDirectory: File? = null
         private set
+
+    /**
+     * Returns the vault directory for the current key, creating it on first use. Runs a
+     * PBKDF2 derivation when it creates, so call off the main thread. Null when locked.
+     */
+    @Synchronized
+    fun ensureVault(): File? {
+        val currentKey = key ?: return null
+        outputDirectory?.let { return it }
+        val created = VaultUtils.createVault(currentKey, this)
+        // The key may have been cleared while the vault was being created.
+        if (key != currentKey) {
+            return null
+        }
+        outputDirectory = created
+        return created
+    }
 
     private var activeActivities = 0
     private val handler = Handler(Looper.getMainLooper())
