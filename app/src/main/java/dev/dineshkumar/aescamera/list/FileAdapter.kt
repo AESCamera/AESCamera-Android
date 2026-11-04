@@ -116,6 +116,9 @@ class FileAdapter(
             val listed = currentList.filterIsInstance<GalleryItem.Media>().map { it.path }.toSet()
             if (selected.retainAll(listed)) {
                 selectionMode = selected.isNotEmpty()
+                if (!selectionMode) {
+                    notifyItemRangeChanged(0, itemCount)
+                }
                 onSelectionChanged(selected.size, mediaCount)
             }
         }

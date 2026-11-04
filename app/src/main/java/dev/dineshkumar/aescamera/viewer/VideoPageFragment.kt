@@ -120,15 +120,18 @@ class VideoPageFragment : Fragment() {
     }
 
     private fun initializePlayer() {
-        if (player != null || verifying) {
-            return
-        }
         val b = _binding ?: return
         val key = (requireActivity().application as AESCameraApplication).key
         if (key == null) {
+            // Locked: blank the page whatever else is in flight.
             b.playerView.visibility = View.INVISIBLE
             b.error.visibility = View.GONE
             b.resetKey.visibility = View.GONE
+            b.unverifiedBadge.visibility = View.GONE
+            b.progress.visibility = View.GONE
+            return
+        }
+        if (player != null || verifying) {
             return
         }
 
@@ -146,6 +149,10 @@ class VideoPageFragment : Fragment() {
                 verifying = false
                 val bound = _binding ?: return@withContext
                 bound.progress.visibility = View.GONE
+                if ((requireActivity().application as AESCameraApplication).key != key) {
+                    // Locked or re-keyed meanwhile: this verdict belongs to the old key.
+                    return@withContext
+                }
                 when (result) {
                     EncvVerification.FAILED -> showError(
                         getString(R.string.video_verification_failed_message),
@@ -158,7 +165,7 @@ class VideoPageFragment : Fragment() {
                             bound.unverifiedBadge.visibility = View.VISIBLE
                         }
                         verified = true
-                        if (isResumed && (requireActivity().application as AESCameraApplication).key == key) {
+                        if (isResumed) {
                             buildPlayer(key)
                         }
                     }
@@ -236,6 +243,7 @@ class VideoPageFragment : Fragment() {
         val b = _binding ?: return
         b.error.visibility = View.GONE
         b.resetKey.visibility = View.GONE
+        b.unverifiedBadge.visibility = View.GONE
         b.playerView.visibility = View.VISIBLE
     }
 

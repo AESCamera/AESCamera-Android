@@ -15,6 +15,7 @@ import java.io.File
 import java.util.Collections
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 /**
  * Decrypts gallery thumbnails off the main thread, a few at a time, into a memory cache
@@ -86,13 +87,17 @@ class ThumbnailLoader(
         if (!regenerating.add(item.path) || executor.isShutdown) {
             return
         }
-        executor.execute {
+        val task = Runnable {
             try {
                 if (item.isVideo) {
-                    VideoThumbnailer.createThumbnail(application, item.file, currentKey, overwrite = true)
+                    VideoThumbnailer.createThumbnail(
+                        application, item.file, currentKey, overwrite = true, expectedKey = currentKey
+                    )
                 } else {
                     val decrypted = EncryptionUtils.decryptImage(item.file.readBytes(), currentKey)
-                    ThumbnailUtils.createImageThumbnail(application, item.file.name, decrypted, overwrite = true)
+                    ThumbnailUtils.createImageThumbnail(
+                        application, item.file.name, decrypted, overwrite = true, expectedKey = currentKey
+                    )
                 }
                 cache.remove(item.path)
                 mainHandler.post {
@@ -103,6 +108,12 @@ class ThumbnailLoader(
             } catch (e: Exception) {
                 Log.w(TAG, "Could not rebuild thumbnail for ${item.file.name}: ${e.message}")
             }
+        }
+        try {
+            // This runs on a pool thread; cancel() may have shut the pool down meanwhile.
+            executor.execute(task)
+        } catch (e: RejectedExecutionException) {
+            regenerating.remove(item.path)
         }
     }
 

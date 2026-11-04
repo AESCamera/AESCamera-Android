@@ -88,9 +88,16 @@ class ImagePageFragment : Fragment() {
                 val decrypted = EncryptionUtils.decryptImage(encrypted, key)
                 if (!imported) {
                     // Vault photos without a thumbnail (older captures) get one on first view.
-                    runCatching { ThumbnailUtils.createImageThumbnail(app, file.name, decrypted) }
+                    runCatching {
+                        ThumbnailUtils.createImageThumbnail(app, file.name, decrypted, expectedKey = key)
+                    }
                 }
-                ImageUtils.decodeOriented(decrypted)
+                // Bound the decode: a full-resolution 48 MP photo is ~190 MB of
+                // ARGB, and neighbouring pages decode too. Twice the screen's long
+                // side keeps zoom crisp without that.
+                val metrics = resources.displayMetrics
+                val longSide = maxOf(metrics.widthPixels, metrics.heightPixels)
+                ImageUtils.decodeOriented(decrypted, 2 * longSide)
             }
             withContext(Dispatchers.Main) {
                 val bound = _binding ?: return@withContext

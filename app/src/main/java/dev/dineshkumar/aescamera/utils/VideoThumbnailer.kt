@@ -18,7 +18,8 @@ object VideoThumbnailer {
         application: AESCameraApplication,
         file: File,
         password: String,
-        overwrite: Boolean = false
+        overwrite: Boolean = false,
+        expectedKey: String? = password
     ) {
         val header = EncvHeader.fromFile(file)
         val retriever = MediaMetadataRetriever()
@@ -44,6 +45,8 @@ object VideoThumbnailer {
 
         val jpeg = ByteArrayOutputStream()
         oriented.compress(Bitmap.CompressFormat.JPEG, 90, jpeg)
-        ThumbnailUtils.createImageThumbnail(application, file.name, jpeg.toByteArray(), overwrite)
+        ThumbnailUtils.createImageThumbnail(
+            application, file.name, jpeg.toByteArray(), overwrite, expectedKey
+        )
     }
 }

@@ -14,16 +14,23 @@ class ThumbnailUtils {
         /**
          * Encrypts a thumbnail of [inputPicture] under [fileName] in the vault's thumbnail
          * directory. An existing thumbnail is kept unless [overwrite] is set (used to
-         * rebuild the tiny thumbnails made by older versions).
+         * rebuild the tiny thumbnails made by older versions). Background jobs that
+         * decrypted [inputPicture] under a particular key pass it as [expectedKey]: if
+         * the vault was re-keyed meanwhile, nothing is written, so a thumbnail from one
+         * vault can never land in another.
          */
         fun createImageThumbnail(
             application: AESCameraApplication,
             fileName: String,
             inputPicture: ByteArray,
-            overwrite: Boolean = false
+            overwrite: Boolean = false,
+            expectedKey: String? = null
         ) {
             val thumbnailDirectory = application.thumbnailDirectory ?: return
             val key = application.key ?: return
+            if (expectedKey != null && expectedKey != key) {
+                return
+            }
 
             // Create and encrypt thumbnail. Recreate the dir in case it vanished from
             // shared storage since the key was entered.

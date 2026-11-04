@@ -41,6 +41,7 @@ class MediaViewerActivity : ProtectedBaseActivity() {
         binding = ActivityMediaViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        savedInstanceState?.getStringArrayList(STATE_ADDED)?.let { addedToVault.addAll(it) }
 
         val importedPaths = intent.getStringArrayListExtra(EXTRA_IMPORTED_PATHS)
         val startIndex: Int
@@ -62,7 +63,6 @@ class MediaViewerActivity : ProtectedBaseActivity() {
         }
 
         binding.pager.adapter = MediaPagerAdapter(this, files, imported)
-        binding.pager.offscreenPageLimit = 1
         binding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 updateTitle(position)
@@ -70,6 +70,11 @@ class MediaViewerActivity : ProtectedBaseActivity() {
         })
         binding.pager.setCurrentItem(startIndex, false)
         updateTitle(startIndex)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putStringArrayList(STATE_ADDED, ArrayList(addedToVault))
     }
 
     private fun updateTitle(position: Int) {
@@ -145,6 +150,7 @@ class MediaViewerActivity : ProtectedBaseActivity() {
     }
 
     companion object {
+        private const val STATE_ADDED = "added_to_vault"
         const val EXTRA_DIR = "dir"
         const val EXTRA_NAME = "name"
 

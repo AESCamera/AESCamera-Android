@@ -175,6 +175,7 @@ class MainActivity : ProtectedBaseActivity() {
         binding.cameraModeToggleButton.isEnabled = false
         binding.cameraFlipButton.isEnabled = false
         binding.openFilesListButton.isEnabled = false
+        binding.lastCaptureThumbnail.isEnabled = false
         binding.flashButton.isEnabled = false
     }
 
@@ -183,7 +184,16 @@ class MainActivity : ProtectedBaseActivity() {
         binding.cameraModeToggleButton.isEnabled = true
         binding.cameraFlipButton.isEnabled = true
         binding.openFilesListButton.isEnabled = true
+        binding.lastCaptureThumbnail.isEnabled = true
         binding.flashButton.isEnabled = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Items may have been deleted in the gallery: refresh the last-capture circle.
+        if ((application as AESCameraApplication).key != null) {
+            loadLatestThumbnail()
+        }
     }
 
     private fun lock() {
@@ -413,6 +423,7 @@ class MainActivity : ProtectedBaseActivity() {
         binding.cameraModeToggleButton.isEnabled = !recording
         binding.cameraFlipButton.isEnabled = !recording
         binding.openFilesListButton.isEnabled = !recording
+        binding.lastCaptureThumbnail.isEnabled = !recording
         binding.flashButton.isEnabled = !recording
     }
 
