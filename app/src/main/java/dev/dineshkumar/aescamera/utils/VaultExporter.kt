@@ -83,6 +83,17 @@ object VaultExporter {
         return ExportSummary(exported, failed)
     }
 
+    private fun isVerifier(application: AESCameraApplication, uri: Uri): Boolean {
+        val name = runCatching {
+            application.contentResolver.query(
+                uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull() ?: uri.lastPathSegment
+        return name?.substringAfterLast('/') == ".vault"
+    }
+
     /**
      * Brings picked backup files into the current vault: each one is validated like a
      * shared file, staged in the cache, then imported (which also rejects files sealed
@@ -105,6 +116,12 @@ object VaultExporter {
             uris.forEachIndexed { index, uri ->
                 if (isCancelled()) {
                     throw MigrationCancelledException()
+                }
+                if (isVerifier(application, uri)) {
+                    // The exported .vault verifier belongs to the old vault; this vault
+                    // has its own. Not a file to restore, and not worth reporting.
+                    onProgress(index + 1, uris.size)
+                    return@forEachIndexed
                 }
                 val inspection = ImportValidator.inspect(application.contentResolver, uri)
                 if (inspection !is Inspection.Accepted) {

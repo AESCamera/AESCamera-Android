@@ -29,6 +29,7 @@ import java.io.File
 class ImportActivity : AppCompatActivity() {
 
     private var progress: Dialog? = null
+    private var confirmation: Dialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +61,8 @@ class ImportActivity : AppCompatActivity() {
         super.onDestroy()
         progress?.let { runCatching { it.dismiss() } }
         progress = null
+        confirmation?.let { runCatching { it.dismiss() } }
+        confirmation = null
     }
 
     private fun incomingUris(): List<Uri> = when (intent.action) {
@@ -114,6 +117,7 @@ class ImportActivity : AppCompatActivity() {
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
         )
+        confirmation = dialog
         dialog.show()
     }
 

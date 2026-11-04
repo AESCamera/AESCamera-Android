@@ -42,7 +42,9 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
 
+                <!-- A host is required for pathPattern to be applied at all. -->
                 <data android:scheme="content" />
+                <data android:host="*" />
                 <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.enc" />
                 <data android:pathPattern=".*\\..*\\.enc" />

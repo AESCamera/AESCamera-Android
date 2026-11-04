@@ -122,7 +122,11 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 runCatching { progress.dismiss() }
-                // If the key didn't take (error/empty vault), re-prompt.
+                if (isFinishing || isDestroyed) {
+                    // Rotated away during unlock: the recreated activity prompts itself.
+                    return@runOnUiThread
+                }
+                // If the key didn't take (an error), re-prompt.
                 if ((application as AESCameraApplication).key == null) {
                     showPasswordDialog()
                 }
