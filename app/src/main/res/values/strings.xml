@@ -40,7 +40,10 @@
 
     <string name="import_confirm_title">Open encrypted file?</string>
     <string name="import_confirm_one">Open %1$s shared from %2$s? It will be decrypted on screen with your password.</string>
-    <string name="import_confirm_many">Open %1$d encrypted files shared from %2$s? They will be decrypted on screen with your password.</string>
+    <plurals name="import_confirm_many">
+        <item quantity="one">Open %1$d encrypted file shared from %2$s? It will be decrypted on screen with your password.</item>
+        <item quantity="other">Open %1$d encrypted files shared from %2$s? They will be decrypted on screen with your password.</item>
+    </plurals>
     <plurals name="import_skipped">
         <item quantity="one">%d file was skipped because it is not an AES Camera file.</item>
         <item quantity="other">%d files were skipped because they are not AES Camera files.</item>
@@ -68,7 +71,10 @@
     <string name="settings_rapid_capture">Rapid capture</string>
     <string name="settings_rapid_capture_desc">Keep the shutter active while earlier photos are still being encrypted and saved. Needs a device with enough memory for a few full-size photos at once.</string>
     <string name="move_vault_title">Move vault?</string>
-    <string name="move_vault_message">%1$d files will be moved to %2$s. Nothing is re-encrypted. Keep the app open until the move finishes.</string>
+    <plurals name="move_vault_message">
+        <item quantity="one">%1$d file will be moved to %2$s. Nothing is re-encrypted. Keep the app open until the move finishes.</item>
+        <item quantity="other">%1$d files will be moved to %2$s. Nothing is re-encrypted. Keep the app open until the move finishes.</item>
+    </plurals>
     <string name="move_vault_action">Move</string>
     <string name="moving_vault">Moving vault…</string>
     <string name="move_vault_done">Vault moved</string>
@@ -77,12 +83,21 @@
     <string name="progress_count">%1$s %2$d / %3$d</string>
     <string name="export_nothing">There is nothing to export yet</string>
     <string name="exporting">Exporting…</string>
-    <string name="export_done">Exported %1$d files</string>
-    <string name="export_partial">Exported %1$d files, %2$d failed</string>
+    <plurals name="export_done">
+        <item quantity="one">Exported %1$d file</item>
+        <item quantity="other">Exported %1$d files</item>
+    </plurals>
+    <plurals name="export_partial">
+        <item quantity="one">Exported %1$d file, %2$d failed</item>
+        <item quantity="other">Exported %1$d files, %2$d failed</item>
+    </plurals>
     <string name="export_cancelled">Export cancelled</string>
     <string name="export_failed">Export failed. Check that the folder can be written to.</string>
     <string name="restoring">Restoring…</string>
-    <string name="restore_done">Restored %1$d files. Skipped %2$d encrypted with a different password and %3$d that are not AES Camera files.</string>
+    <plurals name="restore_done">
+        <item quantity="one">Restored %1$d file. Skipped %2$d encrypted with a different password and %3$d that are not AES Camera files.</item>
+        <item quantity="other">Restored %1$d files. Skipped %2$d encrypted with a different password and %3$d that are not AES Camera files.</item>
+    </plurals>
     <string name="restore_cancelled">Restore cancelled</string>
     <string name="restore_failed">Restore failed</string>
 

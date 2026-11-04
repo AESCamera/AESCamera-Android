@@ -210,8 +210,16 @@ class FilesListActivity : ProtectedBaseActivity() {
                 }
                 val message = outcome.fold(
                     onSuccess = { summary ->
-                        if (summary.failed == 0) getString(R.string.export_done, summary.exported)
-                        else getString(R.string.export_partial, summary.exported, summary.failed)
+                        if (summary.failed == 0) {
+                            resources.getQuantityString(
+                                R.plurals.export_done, summary.exported, summary.exported
+                            )
+                        } else {
+                            resources.getQuantityString(
+                                R.plurals.export_partial, summary.exported,
+                                summary.exported, summary.failed
+                            )
+                        }
                     },
                     onFailure = { error ->
                         if (error is MigrationCancelledException) getString(R.string.export_cancelled)

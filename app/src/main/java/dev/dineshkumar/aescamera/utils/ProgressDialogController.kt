@@ -1,5 +1,6 @@
 package dev.dineshkumar.aescamera.utils
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.view.LayoutInflater
 import android.widget.ProgressBar
@@ -22,6 +23,8 @@ class ProgressDialogController(
     var cancelled = false
         private set
 
+    // A dialog content view has no parent to inflate against.
+    @SuppressLint("InflateParams")
     private val view = LayoutInflater.from(activity).inflate(R.layout.dialog_progress, null)
     private val bar = view.findViewById<ProgressBar>(R.id.progressBar)
     private val text = view.findViewById<TextView>(R.id.progressText)

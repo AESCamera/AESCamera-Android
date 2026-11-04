@@ -94,7 +94,9 @@ class ImportActivity : AppCompatActivity() {
             if (accepted.size == 1) {
                 getString(R.string.import_confirm_one, accepted[0].name, sender)
             } else {
-                getString(R.string.import_confirm_many, accepted.size, sender)
+                resources.getQuantityString(
+                    R.plurals.import_confirm_many, accepted.size, accepted.size, sender
+                )
             }
         )
         if (rejected.isNotEmpty()) {

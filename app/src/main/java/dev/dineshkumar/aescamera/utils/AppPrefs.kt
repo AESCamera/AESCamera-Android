@@ -1,6 +1,7 @@
 package dev.dineshkumar.aescamera.utils
 
 import android.content.Context
+import androidx.core.content.edit
 
 /** Where the vault directory tree lives; see [VaultStorage]. */
 enum class VaultLocation {
@@ -21,14 +22,14 @@ class AppPrefs(context: Context) {
             runCatching { VaultLocation.valueOf(stored) }.getOrNull()
         }
         set(value) {
-            prefs.edit().putString(KEY_VAULT_LOCATION, value?.name).apply()
+            prefs.edit { putString(KEY_VAULT_LOCATION, value?.name) }
         }
 
     /** Keep the shutter live while earlier photos are still being encrypted and saved. */
     var rapidCapture: Boolean
         get() = prefs.getBoolean(KEY_RAPID_CAPTURE, false)
         set(value) {
-            prefs.edit().putBoolean(KEY_RAPID_CAPTURE, value).apply()
+            prefs.edit { putBoolean(KEY_RAPID_CAPTURE, value) }
         }
 
     companion object {

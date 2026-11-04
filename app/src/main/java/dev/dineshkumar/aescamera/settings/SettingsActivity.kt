@@ -100,7 +100,7 @@ class SettingsActivity : ProtectedBaseActivity() {
 
         AlertDialog.Builder(this)
             .setTitle(R.string.move_vault_title)
-            .setMessage(getString(R.string.move_vault_message, count, destination))
+            .setMessage(resources.getQuantityString(R.plurals.move_vault_message, count, count, destination))
             .setNegativeButton(R.string.cancel) { _, _ -> showLocation(VaultStorage.location(this)) }
             .setOnCancelListener { showLocation(VaultStorage.location(this)) }
             .setPositiveButton(R.string.move_vault_action) { _, _ -> runMove(from, to, target) }
@@ -169,10 +169,7 @@ class SettingsActivity : ProtectedBaseActivity() {
                     return@runOnUiThread
                 }
                 val message = outcome.fold(
-                    onSuccess = { summary ->
-                        if (summary.failed == 0) getString(R.string.export_done, summary.exported)
-                        else getString(R.string.export_partial, summary.exported, summary.failed)
-                    },
+                    onSuccess = { summary -> exportMessage(summary) },
                     onFailure = { error ->
                         if (error is MigrationCancelledException) {
                             getString(R.string.export_cancelled)
@@ -210,8 +207,8 @@ class SettingsActivity : ProtectedBaseActivity() {
                 }
                 val message = outcome.fold(
                     onSuccess = { summary ->
-                        getString(
-                            R.string.restore_done,
+                        resources.getQuantityString(
+                            R.plurals.restore_done, summary.restored,
                             summary.restored, summary.wrongPassword, summary.skipped
                         )
                     },
@@ -232,6 +229,15 @@ class SettingsActivity : ProtectedBaseActivity() {
             }
         }.start()
     }
+
+    private fun exportMessage(summary: VaultExporter.ExportSummary): String =
+        if (summary.failed == 0) {
+            resources.getQuantityString(R.plurals.export_done, summary.exported, summary.exported)
+        } else {
+            resources.getQuantityString(
+                R.plurals.export_partial, summary.exported, summary.exported, summary.failed
+            )
+        }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return if (item.itemId == android.R.id.home) {
