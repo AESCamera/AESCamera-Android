@@ -3,14 +3,18 @@ package dev.dineshkumar.aescamera
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.MediaRecorder
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.view.animation.AlphaAnimation
 import android.view.animation.Animation
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import dev.dineshkumar.aescamera.databinding.ActivityMainBinding
@@ -18,13 +22,17 @@ import dev.dineshkumar.aescamera.list.FilesListActivity
 import dev.dineshkumar.aescamera.utils.AppPrefs
 import dev.dineshkumar.aescamera.utils.CommonUtils
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
+import dev.dineshkumar.aescamera.utils.ImageUtils
+import dev.dineshkumar.aescamera.utils.MediaNames
 import dev.dineshkumar.aescamera.utils.ThumbnailUtils
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.video.EncryptedVideoRecording
 import com.otaliastudios.cameraview.CameraException
 import com.otaliastudios.cameraview.PictureResult
 import com.otaliastudios.cameraview.VideoResult
+import com.otaliastudios.cameraview.controls.Audio
 import com.otaliastudios.cameraview.controls.Facing
+import com.otaliastudios.cameraview.controls.Flash
 import com.otaliastudios.cameraview.controls.Mode
 import com.otaliastudios.cameraview.markers.DefaultAutoFocusMarker
 import java.io.File
@@ -77,12 +85,10 @@ class MainActivity : ProtectedBaseActivity() {
 
         binding.camera.setAutoFocusMarker(DefaultAutoFocusMarker())
 
-        // Check camera permissions if all permission granted
-        // start camera else ask for the permission
-        if (!allPermissionsGranted()) {
-            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-        }
-
+        // Permissions are asked for after unlock (camera) and on the first switch to
+        // video (microphone), never on top of the password prompt. CameraView is told
+        // not to ask on its own (cameraRequestPermissions=false) and is opened by hand
+        // once the camera permission arrives.
         binding.camera.setLifecycleOwner(this);
 
         // MPEG-2 TS is written sequentially, so full video recordings can target the
@@ -97,6 +103,16 @@ class MainActivity : ProtectedBaseActivity() {
                 View.INVISIBLE
             } else {
                 View.VISIBLE
+            }
+            if (it == null) {
+                showLastCapture(null)
+            } else {
+                loadLatestThumbnail()
+                if (!hasPermission(Manifest.permission.CAMERA)) {
+                    ActivityCompat.requestPermissions(
+                        this, arrayOf(Manifest.permission.CAMERA), REQUEST_CODE_CAMERA
+                    )
+                }
             }
         }
 
@@ -143,6 +159,9 @@ class MainActivity : ProtectedBaseActivity() {
         binding.openFilesListButton.setOnClickListener {
             openFilesList()
         }
+        binding.lastCaptureThumbnail.setOnClickListener {
+            openFilesList()
+        }
         binding.lockButton.setOnClickListener {
             lock()
         }
@@ -176,7 +195,7 @@ class MainActivity : ProtectedBaseActivity() {
 
         val app = application as AESCameraApplication
         app.key = null
-        Toast.makeText(this, "Locked", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, R.string.locked_message, Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleMode() {
@@ -184,21 +203,37 @@ class MainActivity : ProtectedBaseActivity() {
             return
         }
 
-        binding.camera.mode = if (binding.camera.mode == Mode.PICTURE) {
-            Mode.VIDEO
-        } else {
-            Mode.PICTURE
+        val toVideo = binding.camera.mode == Mode.PICTURE
+        if (toVideo && !hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            // First time in video mode: ask for the microphone now, not at install.
+            // Either answer switches the mode (see onRequestPermissionsResult).
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_CODE_MICROPHONE
+            )
+            return
+        }
+        applyMode(if (toVideo) Mode.VIDEO else Mode.PICTURE)
+    }
+
+    private fun applyMode(mode: Mode) {
+        binding.camera.mode = mode
+        if (mode == Mode.VIDEO) {
+            binding.camera.audio =
+                if (hasPermission(Manifest.permission.RECORD_AUDIO)) Audio.ON else Audio.OFF
+            // Have the next recording's key ready before the user taps record.
+            (application as AESCameraApplication).prewarmKeys()
         }
 
-        // Have the next recording's key ready before the user taps record.
-        (application as AESCameraApplication).prewarmKeys()
-
-        if (binding.camera.mode == Mode.PICTURE) {
+        if (mode == Mode.PICTURE) {
             binding.cameraCaptureButton.setIcon(getString(R.string.fa_camera))
+            binding.cameraCaptureButton.contentDescription = getString(R.string.take_photo)
             binding.cameraModeToggleButton.setIcon(getString(R.string.fa_camera_mode_video))
+            binding.cameraModeToggleButton.contentDescription = getString(R.string.switch_to_video)
         } else {
             binding.cameraCaptureButton.setIcon(getString(R.string.fa_camera_start_recording))
+            binding.cameraCaptureButton.contentDescription = getString(R.string.start_recording)
             binding.cameraModeToggleButton.setIcon(getString(R.string.fa_camera_mode_photo))
+            binding.cameraModeToggleButton.contentDescription = getString(R.string.switch_to_photo)
         }
     }
 
@@ -208,17 +243,13 @@ class MainActivity : ProtectedBaseActivity() {
     }
 
     private fun toggleFlash() {
-        binding.camera.flash = if (binding.camera.flash == com.otaliastudios.cameraview.controls.Flash.OFF) {
-            com.otaliastudios.cameraview.controls.Flash.ON
-        } else {
-            com.otaliastudios.cameraview.controls.Flash.OFF
-        }
+        binding.camera.flash = if (binding.camera.flash == Flash.OFF) Flash.ON else Flash.OFF
 
-        if (binding.camera.flash == com.otaliastudios.cameraview.controls.Flash.ON) {
-            binding.flashButton.setFontAwesomeStyle("solid")
-        } else {
-            binding.flashButton.setFontAwesomeStyle("regular")
-        }
+        // The bolt stays; the state is carried by its opacity and the accessible name.
+        val on = binding.camera.flash == Flash.ON
+        binding.flashButton.alpha = if (on) 1f else 0.45f
+        binding.flashButton.contentDescription =
+            getString(if (on) R.string.flash_on else R.string.flash_off)
     }
 
     private fun flipCamera() {
@@ -254,7 +285,7 @@ class MainActivity : ProtectedBaseActivity() {
         val app = application as AESCameraApplication
         val key = app.key
         if (key == null) {
-            Toast.makeText(this, "Key not found", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.vault_locked_message, Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -350,11 +381,7 @@ class MainActivity : ProtectedBaseActivity() {
                 recording.finish(result.rotation)
                 runOnUiThread {
                     setRecordingUi(false)
-                    Toast.makeText(
-                        this,
-                        getString(R.string.video_saved_message, recording.outputFile.name),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this, R.string.video_saved_message, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to finalize encrypted recording: ${e.message}", e)
@@ -381,18 +408,19 @@ class MainActivity : ProtectedBaseActivity() {
                 else R.string.fa_camera_start_recording
             )
         )
+        binding.cameraCaptureButton.contentDescription =
+            getString(if (recording) R.string.stop_recording else R.string.start_recording)
         binding.cameraModeToggleButton.isEnabled = !recording
         binding.cameraFlipButton.isEnabled = !recording
         binding.openFilesListButton.isEnabled = !recording
         binding.flashButton.isEnabled = !recording
     }
 
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
+    private fun hasPermission(permission: String) =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     private fun cameraError(exception: CameraException) {
-        val msg = "Capture failed: ${exception.message}"
+        val msg = getString(R.string.capture_failed_message, exception.message ?: "")
         Toast.makeText(baseContext, msg, Toast.LENGTH_LONG).show()
         Log.e(TAG, msg, exception)
 
@@ -475,6 +503,7 @@ class MainActivity : ProtectedBaseActivity() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to create video thumbnail: ${e.message}", e)
                 }
+                showLastCapture(pictureResult.data)
             }.start()
             return
         }
@@ -489,7 +518,7 @@ class MainActivity : ProtectedBaseActivity() {
 
         val key = app.key
         if (key == null) {
-            Toast.makeText(this@MainActivity, "Key not found", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, R.string.vault_locked_message, Toast.LENGTH_SHORT).show()
             photoSaveFinished(rapid)
             return
         }
@@ -532,23 +561,55 @@ class MainActivity : ProtectedBaseActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create photo thumbnail: ${e.message}", e)
             }
+            showLastCapture(pictureResult.data)
 
             // Derive the key for the photo after this one while the camera is idle.
             app.prewarmKeys()
 
             runOnUiThread {
-                // In rapid mode the shutter flash is the feedback; a Toast per shot
-                // would pile up over the viewfinder.
-                if (!rapid) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.photo_saved_message, fileName),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
                 photoSaveFinished(rapid)
             }
         }
+    }
+
+    /**
+     * Shows [jpeg] (or clears the slot for null) in the circle over the gallery button:
+     * the capture confirmation, in place of a Toast. Safe to call from any thread.
+     */
+    private fun showLastCapture(jpeg: ByteArray?) {
+        val bitmap: Bitmap? = jpeg?.let {
+            runCatching { ImageUtils.decodeOriented(it, LAST_CAPTURE_PX) }.getOrNull()
+        }
+        runOnUiThread {
+            if (isDestroyed) return@runOnUiThread
+            binding.lastCaptureThumbnail.setImageBitmap(bitmap)
+            binding.lastCaptureThumbnail.visibility =
+                if (bitmap == null) View.GONE else View.VISIBLE
+        }
+    }
+
+    /** On unlock, the newest item's thumbnail fills the slot (decrypted off the main thread). */
+    private fun loadLatestThumbnail() {
+        val app = application as AESCameraApplication
+        val key = app.key ?: return
+        Thread {
+            val latest = app.outputDirectory
+                ?.listFiles()
+                ?.filter {
+                    it.isFile && !it.name.startsWith(".") &&
+                            (it.extension == "enc" || it.extension == "encv")
+                }
+                ?.maxByOrNull { MediaNames.captureTime(it) }
+            val thumbnail = latest?.let { File(app.thumbnailDirectory, it.name) }
+            val bytes = if (thumbnail?.isFile == true) {
+                runCatching { EncryptionUtils.decryptImage(thumbnail.readBytes(), key) }.getOrNull()
+            } else {
+                null
+            }
+            if (app.key == key) {
+                showLastCapture(bytes)
+            }
+        }.start()
     }
 
     override fun onDestroy() {
@@ -557,33 +618,55 @@ class MainActivity : ProtectedBaseActivity() {
         saveExecutor.shutdown()
     }
 
-    // checks the camera permission
     override fun onRequestPermissionsResult(
         requestCode: Int, permissions: Array<String>, grantResults:
         IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            // If all permissions granted , then start Camera
-            if (!allPermissionsGranted()) {
-                // If permissions are not granted,
-                // present a toast to notify the user that
-                // the permissions were not granted.
-                Toast.makeText(this, "Permissions not granted by the user.", Toast.LENGTH_SHORT)
-                    .show()
-                finish()
+        when (requestCode) {
+            REQUEST_CODE_CAMERA -> {
+                if (hasPermission(Manifest.permission.CAMERA)) {
+                    // CameraView skipped opening while the permission was missing.
+                    binding.camera.open()
+                } else {
+                    explainCameraPermission()
+                }
+            }
+
+            REQUEST_CODE_MICROPHONE -> {
+                if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+                    Toast.makeText(this, R.string.recording_without_sound, Toast.LENGTH_LONG).show()
+                }
+                applyMode(Mode.VIDEO)
             }
         }
     }
 
+    /** Without the camera there is nothing to do here: explain, offer Settings, leave. */
+    private fun explainCameraPermission() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.camera_permission_title)
+            .setMessage(R.string.camera_permission_message)
+            .setCancelable(false)
+            .setNegativeButton(R.string.close) { _, _ -> finish() }
+            .setPositiveButton(R.string.open_app_settings) { _, _ ->
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(Uri.fromParts("package", packageName, null))
+                )
+                finish()
+            }
+            .show()
+    }
+
     companion object {
         private const val TAG = "AESCamera"
-        private const val REQUEST_CODE_PERMISSIONS = 20
+        private const val REQUEST_CODE_CAMERA = 20
+        private const val REQUEST_CODE_MICROPHONE = 21
+        private const val LAST_CAPTURE_PX = 96
 
         /** Rapid capture: photos that may be waiting to be encrypted before the shutter pauses. */
         private const val MAX_PENDING_SAVES = 3
-        private val REQUIRED_PERMISSIONS =
-            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     }
 }

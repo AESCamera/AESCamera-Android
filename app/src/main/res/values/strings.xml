@@ -1,8 +1,10 @@
 <resources>
     <string name="app_name">AES Camera</string>
 
-    <string name="enter_encryption_key_title">Key for Encryption</string>
-    <string name="enter_encryption_key">Enter key</string>
+    <string name="enter_encryption_key_title">Vault password</string>
+    <string name="enter_encryption_key">Password</string>
+    <string name="unlock">Unlock</string>
+    <string name="password_note">The password opens its own vault. There is no recovery: a different password shows a different, empty vault.</string>
     <string name="unlocking_message">Unlocking…</string>
     <string name="video_verification_failed_message">This video failed its integrity check. Either the password is different or the file has been modified.</string>
 
@@ -38,7 +40,6 @@
     <string name="photo_content_description">Decrypted photo</string>
     <string name="change_password">Enter a different password</string>
     <string name="unverified_recording">Unverified recording</string>
-    <string name="file_open_failed_message">This file could not be opened.</string>
     <string name="image_decryption_failed_message">This photo could not be decrypted. It may have been saved with a different password.</string>
     <string name="image_decode_failed_message">This photo could not be displayed.</string>
     <string name="file_added_to_vault_message">File added to vault</string>
@@ -109,13 +110,11 @@
     <string name="restore_failed">Restore failed</string>
 
     <string name="video_playback_failed_message">This video could not be played. It may have been saved with a different password.</string>
-    <string name="video_saved_message">Encrypted video saved: %1$s</string>
-    <string name="photo_saved_message">Encrypted photo saved: %1$s</string>
-    <string name="photo_save_failed_message">Failed to save encrypted photo!</string>
-    <string name="video_recording_failed_message">Video recording failed! The encrypted file could not be finalized.</string>
-    <string name="video_recording_setup_failed_message">Unable to start encrypted recording! Recording without encryption is not supported.</string>
+    <string name="video_saved_message">Video saved</string>
+    <string name="photo_save_failed_message">The photo could not be saved.</string>
+    <string name="video_recording_failed_message">The recording could not be finalized. It was kept as far as it got, but could not be verified.</string>
+    <string name="video_recording_setup_failed_message">Encrypted recording could not be started. Recording without encryption is not supported.</string>
 
-    <string name="fa_solid">solid</string>
     <string name="fa_camera">f030</string>
     <string name="fa_camera_rotate">e0d8</string>
     <string name="fa_camera_mode_video">f03d</string>
@@ -125,9 +124,27 @@
 
     <string name="fa_folder_open">f07c</string>
     <string name="fa_file_image">f1c5</string>
-    <string name="fa_file_video">f1c8</string>
     <string name="fa_play">f04b</string>
     <string name="fa_key">f084</string>
     <string name="fa_lock">f023</string>
-    <string name="fa_light_bulb">f0eb</string>
+    <string name="fa_bolt">f0e7</string>
+
+    <string name="take_photo">Take photo</string>
+    <string name="start_recording">Start recording</string>
+    <string name="stop_recording">Stop recording</string>
+    <string name="switch_to_video">Switch to video</string>
+    <string name="switch_to_photo">Switch to photo</string>
+    <string name="switch_camera">Switch camera</string>
+    <string name="open_gallery">Open gallery</string>
+    <string name="lock_vault">Lock vault</string>
+    <string name="flash_on">Flash on</string>
+    <string name="flash_off">Flash off</string>
+    <string name="locked_message">Locked</string>
+    <string name="vault_locked_message">The vault is locked</string>
+    <string name="recording_without_sound">Microphone access was not granted: recording without sound</string>
+    <string name="camera_permission_title">Camera access needed</string>
+    <string name="camera_permission_message">AES Camera needs the camera to take photos and videos. Nothing leaves the device.</string>
+    <string name="open_app_settings">Open settings</string>
+    <string name="close">Close</string>
+    <string name="capture_failed_message">Capture failed: %1$s</string>
 </resources>

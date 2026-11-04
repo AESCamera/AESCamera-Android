@@ -65,7 +65,7 @@ abstract class ProtectedBaseActivity : AppCompatActivity() {
         builder.setView(dialogView)
             .setTitle(getString(R.string.enter_encryption_key_title))
             .setCancelable(false)
-            .setPositiveButton("OK") { _, _ ->
+            .setPositiveButton(R.string.unlock) { _, _ ->
                 dialogOpen = false
                 passwordDialog = null
 
