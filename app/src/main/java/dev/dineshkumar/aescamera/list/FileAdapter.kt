@@ -1,155 +1,185 @@
 package dev.dineshkumar.aescamera.list
 
-import android.annotation.SuppressLint
-import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
-import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import dev.dineshkumar.aescamera.AESCameraApplication
-import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
-import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
-import java.util.Locale
-import dev.dineshkumar.aescamera.databinding.ItemFileBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import dev.dineshkumar.aescamera.databinding.ItemDateHeaderBinding
+import dev.dineshkumar.aescamera.databinding.ItemMediaBinding
 import java.io.File
 
+/**
+ * The gallery grid: day headers spanning the row, square media tiles under them.
+ * Tap opens; long-press enters selection mode, in which tap toggles. Selection is kept
+ * by file path, so it survives list refreshes and is restored across rotation.
+ */
 class FileAdapter(
-    private val context: Context,
-    private val thumbnailDirectory: File?,
-    var key: String?,
-    private val onItemClick: (File, ArrayList<File>) -> Unit,
-    private val onSelectionChanged: (Int) -> Unit
-) : ListAdapter<File, FileAdapter.FileViewHolder>(FileDiffCallback()) {
+    application: AESCameraApplication,
+    private val onOpen: (File) -> Unit,
+    private val onSelectionChanged: (selected: Int, total: Int) -> Unit
+) : ListAdapter<GalleryItem, RecyclerView.ViewHolder>(GalleryDiffCallback()) {
 
-    private val selectedItems = mutableSetOf<Int>()
-    private val thumbnailLoader = ThumbnailLoader(context, thumbnailDirectory, key)
+    private val thumbnailLoader =
+        ThumbnailLoader(application, application.thumbnailDirectory, application.key)
+    private val selected = LinkedHashSet<String>()
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FileViewHolder {
-        val binding = ItemFileBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return FileViewHolder(binding)
+    var selectionMode: Boolean = false
+        private set
+
+    override fun getItemViewType(position: Int): Int = when (getItem(position)) {
+        is GalleryItem.Header -> TYPE_HEADER
+        is GalleryItem.Media -> TYPE_MEDIA
     }
 
-    fun onPause() {
-        thumbnailLoader.pauseLoading()
+    fun isHeader(position: Int): Boolean = getItem(position) is GalleryItem.Header
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val inflater = LayoutInflater.from(parent.context)
+        return if (viewType == TYPE_HEADER) {
+            HeaderViewHolder(ItemDateHeaderBinding.inflate(inflater, parent, false))
+        } else {
+            MediaViewHolder(ItemMediaBinding.inflate(inflater, parent, false))
+        }
     }
 
-    fun onResume() {
-        thumbnailLoader.resumeLoading()
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = getItem(position)) {
+            is GalleryItem.Header -> (holder as HeaderViewHolder).bind(item)
+            is GalleryItem.Media -> (holder as MediaViewHolder).bind(item, item.path in selected)
+        }
     }
 
-    fun onDestroy() {
-        thumbnailLoader.cancelLoading()
+    fun destroy() {
+        thumbnailLoader.cancel()
     }
 
-    override fun onBindViewHolder(holder: FileViewHolder, position: Int) {
-        holder.bind(getItem(position), position in selectedItems)
+    // ---- selection ----------------------------------------------------------------
+
+    val mediaCount: Int
+        get() = currentList.count { it is GalleryItem.Media }
+
+    fun selectedFiles(): List<File> =
+        currentList.filterIsInstance<GalleryItem.Media>()
+            .filter { it.path in selected }
+            .map { it.file }
+
+    fun selectedPaths(): ArrayList<String> = ArrayList(selected)
+
+    /** Restores a saved selection (rotation); paths no longer listed are dropped. */
+    fun restoreSelection(paths: Collection<String>) {
+        val listed = currentList.filterIsInstance<GalleryItem.Media>().map { it.path }.toSet()
+        selected.clear()
+        selected.addAll(paths.filter { it in listed })
+        selectionMode = selected.isNotEmpty()
+        notifyItemRangeChanged(0, itemCount)
+        onSelectionChanged(selected.size, mediaCount)
     }
 
-    inner class FileViewHolder(private val binding: ItemFileBinding) :
+    fun clearSelection() {
+        if (selected.isEmpty() && !selectionMode) {
+            return
+        }
+        selected.clear()
+        selectionMode = false
+        notifyItemRangeChanged(0, itemCount)
+        onSelectionChanged(0, mediaCount)
+    }
+
+    fun selectAll() {
+        currentList.filterIsInstance<GalleryItem.Media>().forEach { selected.add(it.path) }
+        selectionMode = true
+        notifyItemRangeChanged(0, itemCount)
+        onSelectionChanged(selected.size, mediaCount)
+    }
+
+    private fun toggle(item: GalleryItem.Media, position: Int) {
+        if (!selected.remove(item.path)) {
+            selected.add(item.path)
+        }
+        selectionMode = selected.isNotEmpty()
+        if (selectionMode) {
+            notifyItemChanged(position)
+        } else {
+            // Leaving selection mode: every tile drops its check circle.
+            notifyItemRangeChanged(0, itemCount)
+        }
+        onSelectionChanged(selected.size, mediaCount)
+    }
+
+    /** Called by the activity after a delete/refresh so the selection matches the list. */
+    override fun submitList(list: List<GalleryItem>?) {
+        super.submitList(list) {
+            val listed = currentList.filterIsInstance<GalleryItem.Media>().map { it.path }.toSet()
+            if (selected.retainAll(listed)) {
+                selectionMode = selected.isNotEmpty()
+                onSelectionChanged(selected.size, mediaCount)
+            }
+        }
+    }
+
+    // ---- view holders -------------------------------------------------------------
+
+    class HeaderViewHolder(private val binding: ItemDateHeaderBinding) :
         RecyclerView.ViewHolder(binding.root) {
-        private var isVideo = false
+        fun bind(item: GalleryItem.Header) {
+            binding.dateHeader.text = item.label
+        }
+    }
+
+    inner class MediaViewHolder(private val binding: ItemMediaBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+
+        /** The file this tile currently shows; thumbnails for any other file are dropped. */
+        var boundPath: String? = null
+            private set
 
         init {
             binding.root.setOnClickListener {
-                val files = ArrayList<File>()
-
-                for (i in 0 until itemCount) {
-                    files.add(getItem(i))
-                }
-
-                onItemClick(getItem(bindingAdapterPosition), files)
+                val position = bindingAdapterPosition
+                if (position == RecyclerView.NO_POSITION) return@setOnClickListener
+                val item = getItem(position) as? GalleryItem.Media ?: return@setOnClickListener
+                if (selectionMode) toggle(item, position) else onOpen(item.file)
             }
-            binding.fileCheckBox.setOnClickListener {
-                toggleSelection(bindingAdapterPosition)
+            binding.root.setOnLongClickListener {
+                val position = bindingAdapterPosition
+                if (position == RecyclerView.NO_POSITION) return@setOnLongClickListener false
+                val item = getItem(position) as? GalleryItem.Media ?: return@setOnLongClickListener false
+                toggle(item, position)
+                true
             }
         }
 
-        fun bind(file: File, isSelected: Boolean) {
-            binding.fileName.text = file.name
-            binding.fileSize.text = formatFileSize(file.length())
-            binding.fileCheckBox.isChecked = isSelected
-            isVideo = file.extension == "encv"
-
-            showIcon(
-                context.getString(
-                    if (isVideo) R.string.fa_file_video
-                    else R.string.fa_file_image
-                )
+        fun bind(item: GalleryItem.Media, isSelected: Boolean) {
+            boundPath = item.path
+            binding.playBadge.visibility = if (item.isVideo) View.VISIBLE else View.GONE
+            binding.root.contentDescription = binding.root.context.getString(
+                if (item.isVideo) R.string.tile_video_description else R.string.tile_photo_description,
+                dev.dineshkumar.aescamera.utils.MediaNames.viewerTitle(binding.root.context, item.file)
             )
-            thumbnailLoader.loadThumbnail(this, file)
+            binding.selectionCheck.visibility = if (selectionMode) View.VISIBLE else View.GONE
+            binding.selectionCheck.isChecked = isSelected
+            binding.selectionScrim.visibility = if (isSelected) View.VISIBLE else View.GONE
+            binding.root.isSelected = isSelected
+            thumbnailLoader.load(this, item)
         }
 
         fun showThumbnail(bitmap: Bitmap) {
-            binding.fileThumbnail.setImageBitmap(bitmap)
-            binding.fileIcon.visibility = View.GONE
-            binding.fileThumbnail.visibility = View.VISIBLE
-            // The generic icon already flags a video; badge the decrypted thumbnail so a
-            // video stays distinguishable from a photo once its preview is showing.
-            binding.playBadge.visibility = if (isVideo) View.VISIBLE else View.GONE
+            binding.thumbnail.setImageBitmap(bitmap)
+            binding.placeholderIcon.visibility = View.GONE
         }
 
-        fun showIcon(icon: String) {
-            binding.fileIcon.setIcon(icon)
-            binding.fileIcon.visibility = View.VISIBLE
-            binding.fileThumbnail.visibility = View.GONE
-            binding.playBadge.visibility = View.GONE
-        }
-
-        private fun formatFileSize(size: Long): String {
-            val kb = size / 1024.0
-            val mb = kb / 1024.0
-            return when {
-                mb >= 1 -> String.format(Locale.getDefault(), "%.2f MB", mb)
-                kb >= 1 -> String.format(Locale.getDefault(), "%.2f KB", kb)
-                else -> String.format(Locale.getDefault(), "%d bytes", size)
-            }
+        fun showPlaceholder() {
+            binding.thumbnail.setImageDrawable(null)
+            binding.placeholderIcon.visibility = View.VISIBLE
         }
     }
 
-    private fun toggleSelection(position: Int) {
-        if (selectedItems.contains(position)) {
-            selectedItems.remove(position)
-        } else {
-            selectedItems.add(position)
-        }
-        notifyItemChanged(position)
-        onSelectionChanged(selectedItems.size)
-    }
-
-    @SuppressLint("NotifyDataSetChanged")
-    fun clearSelection() {
-        selectedItems.clear()
-        notifyDataSetChanged()
-        onSelectionChanged(0)
-    }
-
-    @SuppressLint("NotifyDataSetChanged")
-    fun selectAll() {
-        for (i in 0 until itemCount) {
-            selectedItems.add(i)
-        }
-        notifyDataSetChanged()
-        onSelectionChanged(selectedItems.size)
-    }
-
-    fun getSelectedItems(): List<File> {
-        return selectedItems.map { getItem(it) }
-    }
-
-    fun getSelectedItemsCount(): Int {
-        return selectedItems.size
+    companion object {
+        const val TYPE_HEADER = 0
+        const val TYPE_MEDIA = 1
     }
 }

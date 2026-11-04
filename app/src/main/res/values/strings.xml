@@ -18,9 +18,12 @@
     </plurals>
     <string name="share">Share</string>
     <string name="export">Export</string>
+    <string name="share_encrypted_files">Share encrypted files</string>
     <string name="add_to_vault">Add to Vault</string>
 
-    <string name="files_list_title">Files</string>
+    <string name="files_list_title">Vault</string>
+    <string name="tile_photo_description">Photo, %1$s</string>
+    <string name="tile_video_description">Video, %1$s</string>
     <string name="empty_vault_title">No media yet</string>
     <string name="empty_vault_message">Photos and videos you capture will appear here.</string>
     <plurals name="selected_count">

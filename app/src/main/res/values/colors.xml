@@ -4,4 +4,6 @@
     <color name="white">#FFFFFFFF</color>
     <color name="recording_red">#FFF44336</color>
     <color name="recording_indicator_background">#80000000</color>
+    <color name="tile_placeholder">#FF2A2A2A</color>
+    <color name="tile_selected_scrim">#66000000</color>
 </resources>

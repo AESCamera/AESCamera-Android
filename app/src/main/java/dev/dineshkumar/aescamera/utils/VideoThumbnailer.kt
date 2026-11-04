@@ -14,7 +14,12 @@ import java.io.File
  */
 object VideoThumbnailer {
 
-    fun createThumbnail(application: AESCameraApplication, file: File, password: String) {
+    fun createThumbnail(
+        application: AESCameraApplication,
+        file: File,
+        password: String,
+        overwrite: Boolean = false
+    ) {
         val header = EncvHeader.fromFile(file)
         val retriever = MediaMetadataRetriever()
         val frame: Bitmap? = try {
@@ -39,6 +44,6 @@ object VideoThumbnailer {
 
         val jpeg = ByteArrayOutputStream()
         oriented.compress(Bitmap.CompressFormat.JPEG, 90, jpeg)
-        ThumbnailUtils.createImageThumbnail(application, file.name, jpeg.toByteArray())
+        ThumbnailUtils.createImageThumbnail(application, file.name, jpeg.toByteArray(), overwrite)
     }
 }

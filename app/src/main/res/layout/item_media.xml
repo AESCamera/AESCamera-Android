@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A square gallery tile: the thumbnail fills it; badges and the selection check overlay. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:padding="1dp">
+
+    <dev.dineshkumar.aescamera.views.SquareFrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/thumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/tile_placeholder"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <dev.dineshkumar.aescamera.views.FontAwesomeTextView
+            android:id="@+id/placeholderIcon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:alpha="0.4"
+            android:importantForAccessibility="no"
+            android:textSize="28sp"
+            app:faIcon="@string/fa_file_image"
+            app:faStyle="regular" />
+
+        <View
+            android:id="@+id/selectionScrim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/tile_selected_scrim"
+            android:visibility="gone" />
+
+        <dev.dineshkumar.aescamera.views.FontAwesomeTextView
+            android:id="@+id/playBadge"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_play_badge"
+            android:gravity="center"
+            android:importantForAccessibility="no"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:visibility="gone"
+            app:faIcon="@string/fa_play"
+            app:faStyle="solid" />
+
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/selectionCheck"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:clickable="false"
+            android:focusable="false"
+            android:importantForAccessibility="no"
+            android:visibility="gone"
+            app:buttonTint="@color/white" />
+
+    </dev.dineshkumar.aescamera.views.SquareFrameLayout>
+
+</FrameLayout>

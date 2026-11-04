@@ -1,7 +1,6 @@
 package dev.dineshkumar.aescamera.utils
 
 import android.graphics.Bitmap
-import android.util.TypedValue
 import androidx.core.graphics.scale
 import dev.dineshkumar.aescamera.AESCameraApplication
 import java.io.ByteArrayOutputStream
@@ -9,10 +8,19 @@ import java.io.File
 
 class ThumbnailUtils {
     companion object {
+        /** Thumbnail width in pixels: enough for a third-of-screen tile on a dense display. */
+        const val THUMBNAIL_WIDTH_PX = 320
+
+        /**
+         * Encrypts a thumbnail of [inputPicture] under [fileName] in the vault's thumbnail
+         * directory. An existing thumbnail is kept unless [overwrite] is set (used to
+         * rebuild the tiny thumbnails made by older versions).
+         */
         fun createImageThumbnail(
             application: AESCameraApplication,
             fileName: String,
-            inputPicture: ByteArray
+            inputPicture: ByteArray,
+            overwrite: Boolean = false
         ) {
             val thumbnailDirectory = application.thumbnailDirectory ?: return
             val key = application.key ?: return
@@ -22,15 +30,11 @@ class ThumbnailUtils {
             thumbnailDirectory.mkdirs()
             val thumbnailFile = File(thumbnailDirectory, fileName)
 
-            if (thumbnailFile.exists()) {
+            if (thumbnailFile.exists() && !overwrite) {
                 return
             }
 
-            val thumbnailWidth: Int = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP,
-                24f,
-                application.resources.displayMetrics
-            ).toInt()
+            val thumbnailWidth = THUMBNAIL_WIDTH_PX
 
             // Subsampled, EXIF-oriented decode: a full-resolution decode of a
             // multi-megapixel JPEG takes hundreds of ms just to produce a tiny thumbnail.

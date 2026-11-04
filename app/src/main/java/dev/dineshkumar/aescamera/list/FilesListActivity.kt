@@ -7,6 +7,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
@@ -16,6 +17,7 @@ import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
 import dev.dineshkumar.aescamera.settings.SettingsActivity
+import dev.dineshkumar.aescamera.utils.MediaNames
 import dev.dineshkumar.aescamera.utils.MigrationCancelledException
 import dev.dineshkumar.aescamera.utils.ProgressDialogController
 import dev.dineshkumar.aescamera.utils.VaultExporter
@@ -24,17 +26,27 @@ import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.viewer.MediaViewerActivity
 import java.io.File
 
-
+/**
+ * The vault gallery: a grid of square thumbnails grouped by day, newest first. Tap
+ * opens the viewer; long-press starts a selection, which share, export and delete act
+ * on. Back leaves selection mode before leaving the screen.
+ */
 class FilesListActivity : ProtectedBaseActivity() {
     private lateinit var binding: ActivityFilesListBinding
     private lateinit var adapter: FileAdapter
     private var optionsMenu: Menu? = null
+    private var pendingSelection: ArrayList<String>? = null
 
-    // Export the selected files (ciphertext) into a folder the user picks.
     private val exportLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             uri?.let { exportSelectedItems(it) }
         }
+
+    private val leaveSelectionOnBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            adapter.clearSelection()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,19 +59,28 @@ class FilesListActivity : ProtectedBaseActivity() {
         // bar and under the navigation bar, so inset it past both. clipToPadding=false
         // lets rows scroll through the padded strips.
         binding.fileListRecyclerView.applySystemBarInsetsAsPadding(extraTop = actionBarSize())
+        binding.fileListRecyclerView.setHasFixedSize(true)
+        onBackPressedDispatcher.addCallback(this, leaveSelectionOnBack)
+
+        pendingSelection = savedInstanceState?.getStringArrayList(STATE_SELECTION)
         setupRecyclerView()
 
         val app = application as AESCameraApplication
         app.keyLiveData.observe(this) {
             // The vault directory follows the key, and the adapter's thumbnail loader
             // captures directory + key at construction — rebuild it on key changes.
-            adapter.onDestroy()
+            adapter.destroy()
             setupRecyclerView()
             refreshFileList()
 
             optionsMenu?.findItem(R.id.action_lock)?.isVisible = it != null
         }
         refreshFileList()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putStringArrayList(STATE_SELECTION, adapter.selectedPaths())
     }
 
     private fun setupActionBar() {
@@ -71,70 +92,64 @@ class FilesListActivity : ProtectedBaseActivity() {
 
     private fun setupRecyclerView() {
         val app = application as AESCameraApplication
-        adapter = FileAdapter(this, app.thumbnailDirectory, app.key, onItemClick = { file, files ->
-            run {
-                onItemClick(file, files)
-            }
-        }, onSelectionChanged = { selectedCount ->
-            onSelectionChanged(selectedCount)
-        })
-        binding.fileListRecyclerView.apply {
-            layoutManager = GridLayoutManager(
-                this@FilesListActivity,
-                resources.getInteger(R.integer.file_grid_columns)
-            )
-            adapter = this@FilesListActivity.adapter
+        adapter = FileAdapter(app, onOpen = { file -> openFile(file) }) { selected, total ->
+            onSelectionChanged(selected, total)
         }
+        val spanCount = resources.getInteger(R.integer.file_grid_columns)
+        val layoutManager = GridLayoutManager(this, spanCount)
+        layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int =
+                if (adapter.isHeader(position)) spanCount else 1
+        }
+        binding.fileListRecyclerView.layoutManager = layoutManager
+        binding.fileListRecyclerView.adapter = adapter
     }
 
-    private fun onItemClick(file: File, files: ArrayList<File>) {
+    private fun openFile(file: File) {
         // The viewer lists the vault itself and pages through photos and videos in one
         // swipeable list; only the tapped file travels in the Intent.
         startActivity(MediaViewerActivity.intentFor(this, file))
     }
 
-    private fun onSelectionChanged(selectedCount: Int) {
-        optionsMenu?.findItem(R.id.action_select_all)?.title =
-            if (selectedCount == adapter.itemCount) getString(R.string.deselect_all) else
-                getString(R.string.select_all)
+    private fun onSelectionChanged(selectedCount: Int, total: Int) {
+        val menu = optionsMenu
+        val inSelection = selectedCount > 0
+        leaveSelectionOnBack.isEnabled = inSelection
 
-        if (selectedCount > 0) {
-            optionsMenu?.findItem(R.id.action_delete)?.isVisible = true
-            optionsMenu?.findItem(R.id.action_share)?.isVisible = true
-            optionsMenu?.findItem(R.id.action_export)?.isVisible = true
-            supportActionBar?.title =
-                resources.getQuantityString(R.plurals.selected_count, selectedCount, selectedCount)
+        menu?.findItem(R.id.action_select_all)?.title =
+            if (selectedCount == total && total > 0) getString(R.string.deselect_all)
+            else getString(R.string.select_all)
+        menu?.findItem(R.id.action_delete)?.isVisible = inSelection
+        menu?.findItem(R.id.action_share)?.isVisible = inSelection
+        menu?.findItem(R.id.action_export)?.isVisible = inSelection
+        menu?.findItem(R.id.action_lock)?.isVisible = !inSelection
+        menu?.findItem(R.id.action_settings)?.isVisible = !inSelection
+
+        supportActionBar?.title = if (inSelection) {
+            resources.getQuantityString(R.plurals.selected_count, selectedCount, selectedCount)
         } else {
-            optionsMenu?.findItem(R.id.action_delete)?.isVisible = false
-            optionsMenu?.findItem(R.id.action_share)?.isVisible = false
-            optionsMenu?.findItem(R.id.action_export)?.isVisible = false
-            supportActionBar?.title = getString(R.string.files_list_title)
+            getString(R.string.files_list_title)
         }
     }
 
     private fun refreshFileList() {
         val app = application as AESCameraApplication
-        val files =
-            (app.outputDirectory?.listFiles()
-                ?.filter {
-                    it.isFile && !it.name.startsWith(".")
-                            && (it.extension == "enc" || it.extension == "encv")
-                }
-                ?: emptyList()).let { list ->
-                list.sortedByDescending { it.lastModified() }
-            }
+        val files = app.outputDirectory?.let { MediaViewerActivity.listMedia(it) } ?: emptyList()
 
         optionsMenu?.findItem(R.id.action_select_all)?.isVisible = files.isNotEmpty()
-
         binding.emptyView.visibility = if (files.isEmpty()) View.VISIBLE else View.GONE
 
-        adapter.key = app.key
-        adapter.clearSelection()
-        adapter.submitList(files)
+        adapter.submitList(GalleryItem.build(files) { MediaNames.dayLabel(this, it) })
+        pendingSelection?.let { saved ->
+            pendingSelection = null
+            if (saved.isNotEmpty()) {
+                binding.fileListRecyclerView.post { adapter.restoreSelection(saved) }
+            }
+        }
     }
 
     private fun confirmDeleteSelectedItems() {
-        val count = adapter.getSelectedItemsCount()
+        val count = adapter.selectedFiles().size
         if (count == 0) {
             return
         }
@@ -148,7 +163,7 @@ class FilesListActivity : ProtectedBaseActivity() {
     }
 
     private fun deleteSelectedItems() {
-        val selectedFiles = adapter.getSelectedItems()
+        val selectedFiles = adapter.selectedFiles()
         val app = application as AESCameraApplication
 
         for (file in selectedFiles) {
@@ -162,32 +177,34 @@ class FilesListActivity : ProtectedBaseActivity() {
             }
         }
 
+        adapter.clearSelection()
         refreshFileList()
     }
 
     private fun shareSelectedItems() {
-        val selectedFiles = adapter.getSelectedItems()
-
-        val intent = Intent()
-        intent.setAction(Intent.ACTION_SEND_MULTIPLE)
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        intent.setType("application/octet-stream")
-
-        val files = ArrayList<Uri>()
-
-        for (file in selectedFiles) {
-            val uri = FileProvider.getUriForFile(this, application.packageName + ".provider", file)
-            files.add(uri)
+        val selectedFiles = adapter.selectedFiles()
+        if (selectedFiles.isEmpty()) {
+            return
         }
 
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE)
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        intent.type = "application/octet-stream"
+
+        val files = ArrayList<Uri>()
+        for (file in selectedFiles) {
+            files.add(FileProvider.getUriForFile(this, application.packageName + ".provider", file))
+        }
         intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, files)
-        startActivity(intent)
+
+        // A chooser every time: the recipient is a decision, not a remembered default.
+        startActivity(Intent.createChooser(intent, getString(R.string.share_encrypted_files)))
 
         adapter.clearSelection()
     }
 
     private fun exportSelectedItems(treeUri: Uri) {
-        val files = adapter.getSelectedItems()
+        val files = adapter.selectedFiles()
         if (files.isEmpty()) {
             return
         }
@@ -233,7 +250,8 @@ class FilesListActivity : ProtectedBaseActivity() {
         menuInflater.inflate(R.menu.file_list_menu, menu)
         optionsMenu = menu
 
-        optionsMenu?.findItem(R.id.action_select_all)?.isVisible = adapter.itemCount != 0
+        optionsMenu?.findItem(R.id.action_select_all)?.isVisible = adapter.mediaCount != 0
+        onSelectionChanged(adapter.selectedFiles().size, adapter.mediaCount)
 
         return true
     }
@@ -246,12 +264,11 @@ class FilesListActivity : ProtectedBaseActivity() {
             }
 
             R.id.action_select_all -> {
-                if (adapter.getSelectedItems().size == adapter.itemCount) {
+                if (adapter.selectedFiles().size == adapter.mediaCount) {
                     adapter.clearSelection()
                 } else {
                     adapter.selectAll()
                 }
-
                 true
             }
 
@@ -272,7 +289,7 @@ class FilesListActivity : ProtectedBaseActivity() {
             }
 
             R.id.action_export -> {
-                if (adapter.getSelectedItemsCount() > 0) {
+                if (adapter.selectedFiles().isNotEmpty()) {
                     exportLauncher.launch(null)
                 }
                 true
@@ -287,18 +304,12 @@ class FilesListActivity : ProtectedBaseActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        adapter.onPause()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        adapter.onResume()
-    }
-
     override fun onDestroy() {
         super.onDestroy()
-        adapter.onDestroy()
+        adapter.destroy()
+    }
+
+    companion object {
+        private const val STATE_SELECTION = "selection"
     }
 }
