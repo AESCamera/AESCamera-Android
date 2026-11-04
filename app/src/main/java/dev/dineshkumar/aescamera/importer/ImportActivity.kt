@@ -14,8 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.IntentCompat
 import dev.dineshkumar.aescamera.R
-import dev.dineshkumar.aescamera.viewer.DecryptedImageViewerActivity
-import dev.dineshkumar.aescamera.viewer.DecryptedVideoPlayerActivity
+import dev.dineshkumar.aescamera.viewer.MediaViewerActivity
 import java.io.File
 
 /**
@@ -178,23 +177,11 @@ class ImportActivity : AppCompatActivity() {
                 if (copied.isEmpty()) {
                     Toast.makeText(this, R.string.import_failed_copy, Toast.LENGTH_LONG).show()
                 } else {
-                    startActivity(viewerIntent(copied))
+                    startActivity(MediaViewerActivity.intentForImported(this, copied))
                 }
                 finish()
             }
         }.start()
-    }
-
-    private fun viewerIntent(paths: ArrayList<String>): Intent {
-        val first = paths[0]
-        return if (first.lowercase().endsWith(".encv")) {
-            Intent(this, DecryptedVideoPlayerActivity::class.java)
-                .putExtra(DecryptedVideoPlayerActivity.EXTRA_PATH, first)
-                .putExtra(DecryptedVideoPlayerActivity.EXTRA_IMPORTED, true)
-        } else {
-            Intent(this, DecryptedImageViewerActivity::class.java)
-                .putStringArrayListExtra(DecryptedImageViewerActivity.EXTRA_IMPORTED_PATHS, paths)
-        }
     }
 
     private fun uniqueFile(dir: File, name: String): File {

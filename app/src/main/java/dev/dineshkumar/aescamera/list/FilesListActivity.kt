@@ -21,7 +21,7 @@ import dev.dineshkumar.aescamera.utils.ProgressDialogController
 import dev.dineshkumar.aescamera.utils.VaultExporter
 import dev.dineshkumar.aescamera.utils.actionBarSize
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
-import dev.dineshkumar.aescamera.viewer.GalleryNav
+import dev.dineshkumar.aescamera.viewer.MediaViewerActivity
 import java.io.File
 
 
@@ -88,12 +88,9 @@ class FilesListActivity : ProtectedBaseActivity() {
     }
 
     private fun onItemClick(file: File, files: ArrayList<File>) {
-        // Previous/next navigates the whole gallery — images and videos in one ordered
-        // list — so both viewers receive the same list and hand off to each other at
-        // media-type boundaries (see GalleryNav).
-        val paths = files.map { it.absolutePath }
-        val index = files.indexOf(file).coerceAtLeast(0)
-        startActivity(GalleryNav.intentFor(this, paths, index))
+        // The viewer lists the vault itself and pages through photos and videos in one
+        // swipeable list; only the tapped file travels in the Intent.
+        startActivity(MediaViewerActivity.intentFor(this, file))
     }
 
     private fun onSelectionChanged(selectedCount: Int) {

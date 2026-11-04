@@ -87,6 +87,9 @@ dependencies {
     // Vendored CameraView 2.7.2, patched for MPEG-2 TS output
     implementation(project(":cameraview"))
 
+    // Swipeable media viewer (photos and videos in one pager)
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
+
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
 

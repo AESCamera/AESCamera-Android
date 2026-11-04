@@ -4,7 +4,7 @@
     <string name="enter_encryption_key_title">Key for Encryption</string>
     <string name="enter_encryption_key">Enter key</string>
     <string name="unlocking_message">Unlocking…</string>
-    <string name="video_verification_failed_message">Video integrity check failed! Either the key is wrong or the file has been modified.</string>
+    <string name="video_verification_failed_message">This video failed its integrity check. Either the password is different or the file has been modified.</string>
 
     <string name="select_all">Select All</string>
     <string name="deselect_all">Deselect All</string>
@@ -28,12 +28,16 @@
         <item quantity="other">%d Selected</item>
     </plurals>
 
-    <string name="decrypted_image_viewer_title">Decrypted Image</string>
-    <string name="error_no_file_selected">Error: No file selected</string>
-    <string name="enter_key_message">Enter key to decrypt image</string>
-    <string name="file_open_failed_message">Unable to open file!</string>
-    <string name="image_decryption_failed_message">Failed to decrypt image!</string>
-    <string name="image_decode_failed_message">Failed to decode image!</string>
+    <string name="error_no_file_selected">No file to open</string>
+    <string name="viewer_position">%1$d of %2$d</string>
+    <string name="today">Today</string>
+    <string name="yesterday">Yesterday</string>
+    <string name="photo_content_description">Decrypted photo</string>
+    <string name="change_password">Enter a different password</string>
+    <string name="unverified_recording">Unverified recording</string>
+    <string name="file_open_failed_message">This file could not be opened.</string>
+    <string name="image_decryption_failed_message">This photo could not be decrypted. It may have been saved with a different password.</string>
+    <string name="image_decode_failed_message">This photo could not be displayed.</string>
     <string name="file_added_to_vault_message">File added to vault</string>
     <string name="vault_import_wrong_password">This file was encrypted with a different password</string>
     <string name="vault_import_failed">Could not add the file to the vault</string>
@@ -101,8 +105,7 @@
     <string name="restore_cancelled">Restore cancelled</string>
     <string name="restore_failed">Restore failed</string>
 
-    <string name="decrypted_video_player_title">Decrypted Video</string>
-    <string name="video_playback_failed_message">Failed to play video! Check that the key is correct.</string>
+    <string name="video_playback_failed_message">This video could not be played. It may have been saved with a different password.</string>
     <string name="video_saved_message">Encrypted video saved: %1$s</string>
     <string name="photo_saved_message">Encrypted photo saved: %1$s</string>
     <string name="photo_save_failed_message">Failed to save encrypted photo!</string>
@@ -116,11 +119,7 @@
     <string name="fa_camera_mode_photo">f030</string>
     <string name="fa_camera_start_recording">f192</string>
     <string name="fa_camera_stop_recording">f04d</string>
-    <string name="fa_backward_step">f048</string>
-    <string name="fa_forward_step">f051</string>
 
-    <string name="previous_item">Previous</string>
-    <string name="next_item">Next</string>
     <string name="fa_folder_open">f07c</string>
     <string name="fa_file_image">f1c5</string>
     <string name="fa_file_video">f1c8</string>

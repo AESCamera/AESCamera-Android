@@ -20,7 +20,6 @@ import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivityFilesListBinding
 import java.util.Locale
 import dev.dineshkumar.aescamera.databinding.ItemFileBinding
-import dev.dineshkumar.aescamera.viewer.DecryptedImageViewerActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch

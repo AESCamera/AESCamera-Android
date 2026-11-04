@@ -62,10 +62,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".viewer.DecryptedImageViewerActivity"
-            android:exported="false" />
-        <activity
-            android:name=".viewer.DecryptedVideoPlayerActivity"
+            android:name=".viewer.MediaViewerActivity"
             android:exported="false" />
         <activity
             android:name=".list.FilesListActivity"
