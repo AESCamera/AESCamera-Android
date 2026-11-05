@@ -105,9 +105,9 @@ Then:
 - **minSdk 26** (Android 8.0) - required for `MediaRecorder.OutputFormat.MPEG_2_TS`,
   which makes encrypt-while-recording possible. **compile/target SDK 36** (Android 16)
 - **Material 3**, ViewBinding, ConstraintLayout, RecyclerView
-- **Camera:** a vendored fork of
-  [otaliastudios/CameraView](https://github.com/natario1/CameraView) 2.7.2 (MIT),
-  patched to output MPEG-2 TS so recordings can be encrypted as they stream
+- **Camera:** a [fork](https://github.com/AESCamera/CameraView) of
+  [otaliastudios/CameraView](https://github.com/natario1/CameraView) 2.7.2 (MIT), included as
+  a git submodule and patched to output MPEG-2 TS so recordings can be encrypted as they stream
 - **Video playback:** Media3 / ExoPlayer 1.4.1, with a custom AES-CTR `DataSource`
 - **Crypto:** the platform JCA (AES-GCM, AES-CTR, PBKDF2, HMAC)
 
@@ -131,8 +131,8 @@ AES Camera is free software licensed under the **GNU General Public License v3.0
 modified version, you must release your changes under the GPLv3 as well; the copyleft only
 applies to redistributed modifications.
 
-The `cameraview/` module is a fork of CameraView and remains under its original
-**MIT License** (compatible with GPLv3).
+The CameraView fork (`libs/CameraView` submodule, built through the `cameraview/` module)
+remains under its original **MIT License** (compatible with GPLv3).
 
 ### Contributing
 
