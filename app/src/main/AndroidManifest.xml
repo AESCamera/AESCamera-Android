@@ -30,6 +30,7 @@
         <activity
             android:name=".importer.ImportActivity"
             android:excludeFromRecents="true"
+            android:theme="@style/Theme.AESCamera.Translucent"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

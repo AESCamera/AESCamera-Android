@@ -78,6 +78,8 @@
     <string name="settings_capture">Capture</string>
     <string name="settings_rapid_capture">Rapid capture</string>
     <string name="settings_rapid_capture_desc">Keep the shutter active while earlier photos are still being encrypted and saved. Needs a device with enough memory for a few full-size photos at once.</string>
+    <string name="settings_show_last_capture">Show last capture</string>
+    <string name="settings_show_last_capture_desc">Show a preview of your latest photo or video on the camera screen\'s gallery button. Off by default, so nothing from the vault is visible on the camera screen.</string>
     <string name="move_vault_title">Move vault?</string>
     <plurals name="move_vault_message">
         <item quantity="one">%1$d file will be moved to %2$s. Nothing is re-encrypted. Keep the app open until the move finishes.</item>

@@ -32,9 +32,20 @@ class AppPrefs(context: Context) {
             prefs.edit { putBoolean(KEY_RAPID_CAPTURE, value) }
         }
 
+    /**
+     * Show the latest capture on the camera screen's gallery button. Off by default, so
+     * nothing from the vault is visible on the camera screen unless the user asks for it.
+     */
+    var showLastCapture: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_LAST_CAPTURE, false)
+        set(value) {
+            prefs.edit { putBoolean(KEY_SHOW_LAST_CAPTURE, value) }
+        }
+
     companion object {
         private const val NAME = "aescamera"
         private const val KEY_VAULT_LOCATION = "vault_location"
         private const val KEY_RAPID_CAPTURE = "rapid_capture"
+        private const val KEY_SHOW_LAST_CAPTURE = "show_last_capture"
     }
 }

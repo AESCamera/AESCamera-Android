@@ -1,11 +1,24 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.AESCamera" parent="Theme.Material3.DayNight">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <!-- Edge-to-edge (targetSdk 35+) makes the system bars transparent over the
+             light window background, so ask for dark status/navigation bar icons.
+             The camera and viewer (black backgrounds) switch back in code. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
     </style>
 
     <style name="Theme.AESCamera" parent="Base.Theme.AESCamera" />
+
+    <!-- ImportActivity: only shows a confirmation dialog, so no window or action bar of
+         its own; the dialog appears over the app that shared the file. -->
+    <style name="Theme.AESCamera.Translucent" parent="Theme.AESCamera">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 
     <style name="ShapeAppearance.AESCamera.Circle" parent="">
         <item name="cornerFamily">rounded</item>

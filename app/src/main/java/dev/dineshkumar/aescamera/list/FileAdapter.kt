@@ -100,11 +100,12 @@ class FileAdapter(
         if (!selected.remove(item.path)) {
             selected.add(item.path)
         }
+        val wasSelectionMode = selectionMode
         selectionMode = selected.isNotEmpty()
-        if (selectionMode) {
+        if (selectionMode == wasSelectionMode) {
             notifyItemChanged(position)
         } else {
-            // Leaving selection mode: every tile drops its check circle.
+            // Entering or leaving selection mode: every tile shows or drops its checkbox.
             notifyItemRangeChanged(0, itemCount)
         }
         onSelectionChanged(selected.size, mediaCount)

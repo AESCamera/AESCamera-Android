@@ -63,7 +63,8 @@
             android:focusable="false"
             android:importantForAccessibility="no"
             android:visibility="gone"
-            app:buttonTint="@color/white" />
+            app:buttonIconTint="@color/white"
+            app:buttonTint="@color/selection_check_button" />
 
     </dev.dineshkumar.aescamera.views.SquareFrameLayout>
 

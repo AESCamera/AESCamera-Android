@@ -21,7 +21,6 @@ import dev.dineshkumar.aescamera.utils.MediaNames
 import dev.dineshkumar.aescamera.utils.MigrationCancelledException
 import dev.dineshkumar.aescamera.utils.ProgressDialogController
 import dev.dineshkumar.aescamera.utils.VaultExporter
-import dev.dineshkumar.aescamera.utils.actionBarSize
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.viewer.MediaViewerActivity
 import java.io.File
@@ -56,9 +55,11 @@ class FilesListActivity : ProtectedBaseActivity() {
 
         setupActionBar()
         // Edge-to-edge (targetSdk 36): the grid is laid out behind the (opaque) action
-        // bar and under the navigation bar, so inset it past both. clipToPadding=false
-        // lets rows scroll through the padded strips.
-        binding.fileListRecyclerView.applySystemBarInsetsAsPadding(extraTop = actionBarSize())
+        // bar and under the navigation bar. AppCompat already adds the action bar's
+        // height to the top inset it dispatches. The top inset is a margin so rows are
+        // clipped at the action bar (not drawn under the transparent status bar), while
+        // clipToPadding=false lets them scroll behind the navigation bar.
+        binding.fileListRecyclerView.applySystemBarInsetsAsPadding(topAsMargin = true)
         binding.fileListRecyclerView.setHasFixedSize(true)
         onBackPressedDispatcher.addCallback(this, leaveSelectionOnBack)
 

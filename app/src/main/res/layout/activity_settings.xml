@@ -113,5 +113,20 @@
             android:text="@string/settings_rapid_capture_desc"
             android:textAppearance="?attr/textAppearanceBodySmall" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/showLastCaptureSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:paddingVertical="8dp"
+            android:text="@string/settings_show_last_capture" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:alpha="0.7"
+            android:text="@string/settings_show_last_capture_desc"
+            android:textAppearance="?attr/textAppearanceBodySmall" />
+
     </LinearLayout>
 </ScrollView>

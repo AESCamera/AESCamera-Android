@@ -1,10 +1,11 @@
 package dev.dineshkumar.aescamera.utils
 
-import android.content.Context
+import android.app.Activity
 import android.graphics.Rect
-import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 /**
@@ -17,9 +18,15 @@ import androidx.core.view.WindowInsetsCompat
 /**
  * Pads the view by the system-bar (status + navigation + display-cutout) insets.
  *
- * [extraTop]/[extraBottom] are added on the respective edges. An opaque AppCompat action
- * bar sits below the status bar but the content view is laid out *behind* it, so a screen
- * with an action bar passes `extraTop = actionBarSize` to clear it.
+ * [extraTop]/[extraBottom] are added on the respective edges. On a screen with an
+ * AppCompat action bar the content view is laid out behind the bar, but the insets
+ * AppCompat dispatches to it already include the bar's height in the top inset, so no
+ * extra top padding is needed to clear it.
+ *
+ * With [topAsMargin], the top inset becomes a top margin instead of padding. Use it for
+ * a scrolling view with `clipToPadding=false` under an action bar: rows may then scroll
+ * behind the navigation bar, but they are clipped at the bar instead of showing through
+ * the transparent status bar above it.
  */
 fun View.applySystemBarInsetsAsPadding(
     left: Boolean = true,
@@ -28,31 +35,32 @@ fun View.applySystemBarInsetsAsPadding(
     bottom: Boolean = true,
     extraTop: Int = 0,
     extraBottom: Int = 0,
+    topAsMargin: Boolean = false,
 ) {
     val initial = Rect(paddingLeft, paddingTop, paddingRight, paddingBottom)
+    val initialTopMargin = (layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin ?: 0
     ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
         val bars = insets.getInsets(
             WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
         )
+        val topInset = (if (top) bars.top else 0) + extraTop
+        if (topAsMargin) {
+            (view.layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
+                if (params.topMargin != initialTopMargin + topInset) {
+                    params.topMargin = initialTopMargin + topInset
+                    view.layoutParams = params
+                }
+            }
+        }
         view.setPadding(
             initial.left + if (left) bars.left else 0,
-            initial.top + (if (top) bars.top else 0) + extraTop,
+            initial.top + if (topAsMargin) 0 else topInset,
             initial.right + if (right) bars.right else 0,
             initial.bottom + (if (bottom) bars.bottom else 0) + extraBottom,
         )
         insets
     }
     requestApplyInsetsWhenAttached()
-}
-
-/** The themed action-bar height in pixels (0 if the theme has no action bar). */
-fun Context.actionBarSize(): Int {
-    val tv = TypedValue()
-    return if (theme.resolveAttribute(android.R.attr.actionBarSize, tv, true)) {
-        TypedValue.complexToDimensionPixelSize(tv.data, resources.displayMetrics)
-    } else {
-        0
-    }
 }
 
 /** Requests an insets pass now if attached, otherwise once the view attaches. */
@@ -68,5 +76,16 @@ fun View.requestApplyInsetsWhenAttached() {
 
             override fun onViewDetachedFromWindow(v: View) {}
         })
+    }
+}
+
+/**
+ * For screens with a black background (camera, media viewer): light status and
+ * navigation bar icons, whatever the theme asks for (the light theme asks for dark ones).
+ */
+fun Activity.useLightSystemBarIcons() {
+    WindowCompat.getInsetsController(window, window.decorView).apply {
+        isAppearanceLightStatusBars = false
+        isAppearanceLightNavigationBars = false
     }
 }

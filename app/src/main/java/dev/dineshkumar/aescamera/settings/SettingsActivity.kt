@@ -17,12 +17,12 @@ import dev.dineshkumar.aescamera.utils.ProgressDialogController
 import dev.dineshkumar.aescamera.utils.VaultExporter
 import dev.dineshkumar.aescamera.utils.VaultLocation
 import dev.dineshkumar.aescamera.utils.VaultStorage
-import dev.dineshkumar.aescamera.utils.actionBarSize
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 
 /**
  * Vault location (private app storage or shared storage, moved on change), backup and
- * restore through the system file picker, and the rapid capture toggle.
+ * restore through the system file picker, and the capture toggles (rapid capture, last
+ * capture preview).
  */
 class SettingsActivity : ProtectedBaseActivity() {
 
@@ -53,7 +53,9 @@ class SettingsActivity : ProtectedBaseActivity() {
             title = getString(R.string.settings_title)
             setDisplayHomeAsUpEnabled(true)
         }
-        binding.settingsScroll.applySystemBarInsetsAsPadding(extraTop = actionBarSize())
+        // The dispatched top inset already includes the action bar; as a margin it keeps
+        // scrolled content from showing through the status bar (see FilesListActivity).
+        binding.settingsScroll.applySystemBarInsetsAsPadding(topAsMargin = true)
 
         showLocation(VaultStorage.location(this))
         binding.locationGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -67,6 +69,10 @@ class SettingsActivity : ProtectedBaseActivity() {
         binding.rapidCaptureSwitch.isChecked = prefs.rapidCapture
         binding.rapidCaptureSwitch.setOnCheckedChangeListener { _, checked ->
             prefs.rapidCapture = checked
+        }
+        binding.showLastCaptureSwitch.isChecked = prefs.showLastCapture
+        binding.showLastCaptureSwitch.setOnCheckedChangeListener { _, checked ->
+            prefs.showLastCapture = checked
         }
 
         binding.exportButton.setOnClickListener {

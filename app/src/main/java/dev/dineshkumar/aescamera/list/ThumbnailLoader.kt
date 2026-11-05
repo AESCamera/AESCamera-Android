@@ -22,9 +22,9 @@ import java.util.concurrent.RejectedExecutionException
  * so scrolling back never re-derives a key. A result only lands on a tile that is still
  * bound to the same file, so fast scrolling cannot put a thumbnail on the wrong cell.
  *
- * Thumbnails made by older versions were 24 dp wide; one that decodes smaller than
- * [REGENERATE_BELOW_PX] is rebuilt once from the full file in the background (a full
- * decrypt, so bounded by the pool) and reloaded.
+ * Photo thumbnails made by older versions were 24 dp wide; one that decodes narrower
+ * than [REGENERATE_BELOW_PX] is rebuilt once from the full file in the background (a
+ * full decrypt, so bounded by the pool) and reloaded.
  *
  * The cache holds plaintext bitmaps: it lives and dies with the gallery screen and is
  * dropped when the key changes (the adapter is rebuilt) and on [cancel].
@@ -77,7 +77,12 @@ class ThumbnailLoader(
                     holder.showThumbnail(bitmap)
                 }
             }
-            if (bitmap.width < REGENERATE_BELOW_PX && bitmap.height < REGENERATE_BELOW_PX) {
+            // Thumbnails are scaled by width (old: 24 dp, at most 96 px; now 320 px), so
+            // only the width tells an old one apart: a portrait 24 dp thumbnail can be
+            // well over 96 px tall. Old video thumbnails are kept: they are snapshots of
+            // the preview, while a rebuild has to grab a frame from the MPEG-TS stream,
+            // which can come back as a flat green frame (no keyframe markers).
+            if (!item.isVideo && bitmap.width < REGENERATE_BELOW_PX) {
                 regenerate(item, currentKey, holder)
             }
         }
@@ -127,6 +132,6 @@ class ThumbnailLoader(
         private const val TAG = "ThumbnailLoader"
         private const val POOL_SIZE = 3
         private const val CACHE_KB = 24 * 1024
-        private const val REGENERATE_BELOW_PX = 96
+        private const val REGENERATE_BELOW_PX = 160
     }
 }

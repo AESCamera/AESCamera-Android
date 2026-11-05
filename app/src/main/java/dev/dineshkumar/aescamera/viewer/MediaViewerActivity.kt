@@ -15,6 +15,7 @@ import dev.dineshkumar.aescamera.utils.MediaNames
 import dev.dineshkumar.aescamera.utils.VaultImportResult
 import dev.dineshkumar.aescamera.utils.VaultImporter
 import java.io.File
+import dev.dineshkumar.aescamera.utils.useLightSystemBarIcons
 
 /**
  * The vault's media viewer: one horizontal pager over every photo and video, newest
@@ -40,6 +41,7 @@ class MediaViewerActivity : ProtectedBaseActivity() {
 
         binding = ActivityMediaViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        useLightSystemBarIcons()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         savedInstanceState?.getStringArrayList(STATE_ADDED)?.let { addedToVault.addAll(it) }
 

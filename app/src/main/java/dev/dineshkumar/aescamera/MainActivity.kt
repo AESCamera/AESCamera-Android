@@ -38,6 +38,7 @@ import com.otaliastudios.cameraview.markers.DefaultAutoFocusMarker
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import dev.dineshkumar.aescamera.utils.useLightSystemBarIcons
 
 
 class MainActivity : ProtectedBaseActivity() {
@@ -74,6 +75,7 @@ class MainActivity : ProtectedBaseActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        useLightSystemBarIcons()
         prefs = AppPrefs(this)
 
         supportActionBar?.hide();
@@ -168,14 +170,21 @@ class MainActivity : ProtectedBaseActivity() {
         binding.flashButton.setOnClickListener {
             toggleFlash()
         }
+        showFlashState(binding.camera.flash == Flash.ON)
+    }
+
+    /** The gallery button and the last-capture preview on top of it fade together. */
+    private fun setGalleryEnabled(enabled: Boolean) {
+        binding.openFilesListButton.isEnabled = enabled
+        binding.lastCaptureThumbnail.isEnabled = enabled
+        binding.lastCaptureThumbnail.alpha = if (enabled) 1f else 0.4f
     }
 
     private fun disableControls() {
         binding.cameraCaptureButton.isEnabled = false
         binding.cameraModeToggleButton.isEnabled = false
         binding.cameraFlipButton.isEnabled = false
-        binding.openFilesListButton.isEnabled = false
-        binding.lastCaptureThumbnail.isEnabled = false
+        setGalleryEnabled(false)
         binding.flashButton.isEnabled = false
     }
 
@@ -183,8 +192,7 @@ class MainActivity : ProtectedBaseActivity() {
         binding.cameraCaptureButton.isEnabled = true
         binding.cameraModeToggleButton.isEnabled = true
         binding.cameraFlipButton.isEnabled = true
-        binding.openFilesListButton.isEnabled = true
-        binding.lastCaptureThumbnail.isEnabled = true
+        setGalleryEnabled(true)
         binding.flashButton.isEnabled = true
     }
 
@@ -255,9 +263,19 @@ class MainActivity : ProtectedBaseActivity() {
     private fun toggleFlash() {
         binding.camera.flash = if (binding.camera.flash == Flash.OFF) Flash.ON else Flash.OFF
 
-        // The bolt stays; the state is carried by its opacity and the accessible name.
-        val on = binding.camera.flash == Flash.ON
-        binding.flashButton.alpha = if (on) 1f else 0.45f
+        showFlashState(binding.camera.flash == Flash.ON)
+    }
+
+    /**
+     * On: the filled, themed button. Off: the same bolt on a dark translucent circle, an
+     * untoggled look rather than a faded one, so "off" can't be mistaken for "disabled".
+     */
+    private fun showFlashState(on: Boolean) {
+        if (on) {
+            binding.flashButton.resetFillColor()
+        } else {
+            binding.flashButton.setFillColor(ContextCompat.getColor(this, R.color.camera_control_off))
+        }
         binding.flashButton.contentDescription =
             getString(if (on) R.string.flash_on else R.string.flash_off)
     }
@@ -422,8 +440,7 @@ class MainActivity : ProtectedBaseActivity() {
             getString(if (recording) R.string.stop_recording else R.string.start_recording)
         binding.cameraModeToggleButton.isEnabled = !recording
         binding.cameraFlipButton.isEnabled = !recording
-        binding.openFilesListButton.isEnabled = !recording
-        binding.lastCaptureThumbnail.isEnabled = !recording
+        setGalleryEnabled(!recording)
         binding.flashButton.isEnabled = !recording
     }
 
@@ -588,7 +605,7 @@ class MainActivity : ProtectedBaseActivity() {
      * the capture confirmation, in place of a Toast. Safe to call from any thread.
      */
     private fun showLastCapture(jpeg: ByteArray?) {
-        val bitmap: Bitmap? = jpeg?.let {
+        val bitmap: Bitmap? = jpeg?.takeIf { prefs.showLastCapture }?.let {
             runCatching { ImageUtils.decodeOriented(it, LAST_CAPTURE_PX) }.getOrNull()
         }
         runOnUiThread {
@@ -601,6 +618,10 @@ class MainActivity : ProtectedBaseActivity() {
 
     /** On unlock, the newest item's thumbnail fills the slot (decrypted off the main thread). */
     private fun loadLatestThumbnail() {
+        if (!prefs.showLastCapture) {
+            showLastCapture(null)
+            return
+        }
         val app = application as AESCameraApplication
         val key = app.key ?: return
         Thread {
