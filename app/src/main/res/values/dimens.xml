@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings side padding; wider on tablets so lines stay readable. -->
+    <dimen name="settings_horizontal_padding">20dp</dimen>
+</resources>
