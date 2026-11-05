@@ -6,6 +6,9 @@
     <color name="recording_indicator_background">#80000000</color>
     <color name="tile_placeholder">#FF2A2A2A</color>
     <color name="tile_selected_scrim">#66000000</color>
+    <!-- Camera controls: fixed (not themed) so they read the same over the preview in light
+         and dark mode; the dark theme's pale primary made the white glyphs hard to see. -->
+    <color name="camera_control">#FF6750A4</color>
     <!-- Camera toggle in its off state (flash): dark and translucent over the preview. -->
     <color name="camera_control_off">#66000000</color>
 </resources>
