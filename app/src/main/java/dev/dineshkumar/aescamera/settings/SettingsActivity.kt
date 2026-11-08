@@ -30,17 +30,24 @@ class SettingsActivity : ProtectedBaseActivity() {
     private lateinit var prefs: AppPrefs
     private var busy = false
 
+    // A pick made while the vault locked (more than a few seconds in the system picker
+    // locks it, see AESCameraApplication). It runs once the vault is unlocked again.
+    private var pendingExport: Uri? = null
+    private var pendingRestore: List<Uri>? = null
+
     private val exportLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            uri?.let { runExport(it) }
+            if (uri == null) return@registerForActivityResult
+            if (isLocked()) pendingExport = uri else runExport(uri)
         }
 
     private val restoreLauncher =
         registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-            if (!uris.isNullOrEmpty()) {
-                runRestore(uris)
-            }
+            if (uris.isNullOrEmpty()) return@registerForActivityResult
+            if (isLocked()) pendingRestore = uris else runRestore(uris)
         }
+
+    private fun isLocked() = (application as AESCameraApplication).key == null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,6 +93,12 @@ class SettingsActivity : ProtectedBaseActivity() {
         }
         binding.restoreButton.setOnClickListener {
             restoreLauncher.launch(arrayOf("*/*"))
+        }
+
+        (application as AESCameraApplication).keyLiveData.observe(this) { key ->
+            if (key == null) return@observe
+            pendingExport?.let { pendingExport = null; runExport(it) }
+            pendingRestore?.let { pendingRestore = null; runRestore(it) }
         }
     }
 

@@ -36,9 +36,17 @@ class FilesListActivity : ProtectedBaseActivity() {
     private var optionsMenu: Menu? = null
     private var pendingSelection: ArrayList<String>? = null
 
+    // The selection being exported, taken when the picker opens: more than a few seconds
+    // in the picker locks the vault (see AESCameraApplication), which clears the grid.
+    // The export then waits for the vault to be unlocked again.
+    private var exportFiles: List<File> = emptyList()
+    private var pendingExport: Uri? = null
+
     private val exportLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            uri?.let { exportSelectedItems(it) }
+            if (uri == null) return@registerForActivityResult
+            if ((application as AESCameraApplication).key == null) pendingExport = uri
+            else exportSelectedItems(uri)
         }
 
     private val leaveSelectionOnBack = object : OnBackPressedCallback(false) {
@@ -75,6 +83,7 @@ class FilesListActivity : ProtectedBaseActivity() {
             refreshFileList()
 
             optionsMenu?.findItem(R.id.action_lock)?.isVisible = it != null
+            if (it != null) pendingExport?.let { uri -> pendingExport = null; exportSelectedItems(uri) }
         }
         refreshFileList()
     }
@@ -205,7 +214,10 @@ class FilesListActivity : ProtectedBaseActivity() {
     }
 
     private fun exportSelectedItems(treeUri: Uri) {
-        val files = adapter.selectedFiles()
+        // Only files of the vault that is open now: another password may have unlocked.
+        val vault = (application as AESCameraApplication).outputDirectory
+        val files = exportFiles.filter { it.parentFile == vault && it.exists() }
+        exportFiles = emptyList()
         if (files.isEmpty()) {
             return
         }
@@ -290,7 +302,8 @@ class FilesListActivity : ProtectedBaseActivity() {
             }
 
             R.id.action_export -> {
-                if (adapter.selectedFiles().isNotEmpty()) {
+                exportFiles = adapter.selectedFiles()
+                if (exportFiles.isNotEmpty()) {
                     exportLauncher.launch(null)
                 }
                 true
