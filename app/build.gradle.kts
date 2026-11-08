@@ -13,9 +13,10 @@ val localProperties = Properties().apply {
     }
 }
 
-fun requireLocalProperty(name: String): String =
-    localProperties.getProperty(name)
-        ?: throw GradleException("Missing '$name' in local.properties")
+// Release signing comes from local.properties. Only release packaging needs it, so a
+// fresh clone can still build, test and install debug builds without these values.
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val missingReleaseSigningKeys = releaseSigningKeys.filter { localProperties.getProperty(it) == null }
 
 android {
     namespace = "dev.dineshkumar.aescamera"
@@ -35,11 +36,13 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file(requireLocalProperty("storeFile"))
-            storePassword = requireLocalProperty("storePassword")
-            keyAlias = requireLocalProperty("keyAlias")
-            keyPassword = requireLocalProperty("keyPassword")
+        if (missingReleaseSigningKeys.isEmpty()) {
+            create("release") {
+                storeFile = file(localProperties.getProperty("storeFile"))
+                storePassword = localProperties.getProperty("storePassword")
+                keyAlias = localProperties.getProperty("keyAlias")
+                keyPassword = localProperties.getProperty("keyPassword")
+            }
         }
         // The committed debug keystore, so debug builds from any machine share one
         // signature and can update each other's installs.
@@ -66,7 +69,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
         }
 
         debug {
@@ -112,4 +115,12 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+}
+
+// Without signing values a release would package unsigned; stop with the reason instead.
+if (missingReleaseSigningKeys.isNotEmpty()) {
+    val message = "Release signing needs ${missingReleaseSigningKeys.joinToString()} " +
+        "in local.properties (see README, Release build)"
+    tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }
+        .configureEach { doFirst { throw GradleException(message) } }
 }
