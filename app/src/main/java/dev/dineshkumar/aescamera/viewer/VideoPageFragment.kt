@@ -27,6 +27,8 @@ import dev.dineshkumar.aescamera.utils.EncvVerification
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
 import dev.dineshkumar.aescamera.viewer.datasource.EncryptedCTRDataSourceFactory
 import dev.dineshkumar.aescamera.viewer.extractor.EncvDurationReader
+import dev.dineshkumar.aescamera.viewer.extractor.EncvFmp4Index
+import dev.dineshkumar.aescamera.viewer.extractor.IndexedFmp4Extractor
 import dev.dineshkumar.aescamera.viewer.extractor.PtsSeekableTsExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,7 +44,8 @@ import java.io.File
  *
  * Decryption happens on the fly in [EncryptedCTRDataSourceFactory]; nothing decrypted
  * is written to disk. MPEG-2 TS has no rotation metadata, so [PtsSeekableTsExtractor]
- * stamps the rotation stored in the .encv header onto the video format.
+ * stamps the rotation stored in the .encv header onto the video format. Recordings from
+ * the iOS app are fragmented MP4 (container 2) and play through [IndexedFmp4Extractor].
  */
 @OptIn(UnstableApi::class)
 class VideoPageFragment : Fragment() {
@@ -179,19 +182,28 @@ class VideoPageFragment : Fragment() {
         // MediaRecorder's TS output has no PCR (so ExoPlayer can't derive duration or
         // seek) and no H.264 AUD NALs (so samples wouldn't be split). PtsSeekableTsExtractor
         // handles both: it enables access-unit detection and substitutes a linear seek map
-        // whose duration is measured from the PES PTS at each end of the file. Providers
-        // are invoked on ExoPlayer's loader thread, not the main thread.
+        // whose duration is measured from the PES PTS at each end of the file. iOS
+        // recordings (fragmented MP4) get a seek map built from their fragments instead.
+        // The factory and providers are invoked on ExoPlayer's loader thread.
         val extractorsFactory = object : ExtractorsFactory {
-            override fun createExtractors(): Array<Extractor> = arrayOf(
-                PtsSeekableTsExtractor(
-                    durationUsProvider = { EncvDurationReader.readDurationUs(file, key) },
-                    rotationDegreesProvider = {
-                        runCatching { EncvHeader.fromFile(file).rotationDegrees }
-                            .onFailure { Log.e(TAG, "Failed to read rotation of ${file.name}", it) }
-                            .getOrDefault(0)
-                    }
+            override fun createExtractors(): Array<Extractor> {
+                // An unreadable or unsupported header fails in the data source anyway.
+                val container = runCatching { EncvHeader.fromFile(file).container }
+                    .getOrDefault(EncvHeader.CONTAINER_MPEG2_TS)
+                if (container == EncvHeader.CONTAINER_FRAGMENTED_MP4) {
+                    return arrayOf(IndexedFmp4Extractor { EncvFmp4Index.read(file, key) })
+                }
+                return arrayOf(
+                    PtsSeekableTsExtractor(
+                        durationUsProvider = { EncvDurationReader.readDurationUs(file, key) },
+                        rotationDegreesProvider = {
+                            runCatching { EncvHeader.fromFile(file).rotationDegrees }
+                                .onFailure { Log.e(TAG, "Failed to read rotation of ${file.name}", it) }
+                                .getOrDefault(0)
+                        }
+                    )
                 )
-            )
+            }
         }
 
         val exoPlayer = ExoPlayer.Builder(requireContext())

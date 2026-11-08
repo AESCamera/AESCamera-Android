@@ -35,7 +35,9 @@ object VideoThumbnailer {
             return
         }
 
-        // MPEG-TS carries no rotation; the header does (see EncvHeader).
+        // MPEG-TS carries no rotation; the header does (see EncvHeader). iOS recordings
+        // (fragmented MP4) keep it in the track matrix, which the retriever applies itself,
+        // and their header rotation is always 0, so they aren't turned twice.
         val oriented = if (header.rotationDegrees != 0) {
             val matrix = Matrix().apply { postRotate(header.rotationDegrees.toFloat()) }
             Bitmap.createBitmap(frame, 0, 0, frame.width, frame.height, matrix, true)
