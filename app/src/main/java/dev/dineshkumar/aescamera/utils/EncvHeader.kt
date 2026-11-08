@@ -50,6 +50,11 @@ data class VideoKdf(val algorithmId: Int, val iterations: Int) {
  * Rotation is stored here because the MPEG-2 TS container (unlike MP4) has no rotation
  * metadata; the player must apply it. Ciphertext starts at byte [PREFIX_SIZE].
  *
+ * [container] says what the plaintext stream is: [CONTAINER_MPEG2_TS] (recorded here) or
+ * [CONTAINER_FRAGMENTED_MP4] (recorded by the iOS app, which keeps the rotation in the
+ * MP4 track matrix and always writes header rotation 0). Unknown containers are rejected
+ * so a newer format is reported as unsupported instead of failing as garbage.
+ *
  * Version 3 adds the authentication trailer (encrypt-then-MAC over
  * ciphertext‖header‖salt‖iv, see EncryptionUtils.verifyEncv). [FLAG_AUTHENTICATED] is set
  * only when recording finalizes successfully — a recording that died mid-stream has the
@@ -68,6 +73,7 @@ data class EncvHeader(
     val kdf: VideoKdf = if (version >= VERSION_KDF) VideoKdf.DEFAULT else VideoKdf.LEGACY
 ) {
     init {
+        require(container in KNOWN_CONTAINERS) { "Unsupported .encv container $container" }
         require(rotationDegrees in intArrayOf(0, 90, 180, 270)) {
             "Rotation must be one of 0/90/180/270, got $rotationDegrees"
         }
@@ -125,6 +131,11 @@ data class EncvHeader(
         const val PREFIX_SIZE = SIZE + SALT_SIZE + IV_SIZE // 48
 
         const val CONTAINER_MPEG2_TS = 1
+
+        /** Fragmented MP4 (init segment, then moof+mdat fragments), written by iOS. */
+        const val CONTAINER_FRAGMENTED_MP4 = 2
+
+        private val KNOWN_CONTAINERS = intArrayOf(CONTAINER_MPEG2_TS, CONTAINER_FRAGMENTED_MP4)
 
         /** Set at finalize time; a clear flag means "no trailer follows". */
         const val FLAG_AUTHENTICATED = 0x01
