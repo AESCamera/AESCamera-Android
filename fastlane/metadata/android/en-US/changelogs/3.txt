@@ -1,0 +1,3 @@
+• Play videos recorded by AES Camera on iPhone
+• Exports and restores now finish after you unlock, if the vault locked while you were picking a folder
+• Fixed two rare camera crashes when opening or leaving the camera

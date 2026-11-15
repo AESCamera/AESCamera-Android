@@ -1,0 +1,3 @@
+• New: duress password. If someone forces you to unlock AES Camera, enter it instead of your real password. It quietly wipes the vault you chose and opens a decoy vault. Set it up in Settings.
+• Smaller download
+• No proprietary Google libraries left in the app

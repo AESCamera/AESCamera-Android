@@ -1,0 +1,37 @@
+AES Camera is an open-source encrypted camera and vault. Every photo and video is encrypted at the moment of capture. Nothing is ever written to storage unencrypted, and only your key can open it.
+
+Many "vault" apps take an ordinary photo first and encrypt it afterward, leaving the original on disk (and often in cloud backups) where it can be recovered even after it gets deleted. AES Camera works differently: your photos and videos are encrypted as they are captured, so an unencrypted copy never touches your storage in the first place.
+
+WHY AES CAMERA
+
+- Encrypted at the shutter. Photos and videos are encrypted the instant you capture them, not after.
+- Encrypt-while-recording video. Video is encrypted as it records, never saved in the clear and re-encrypted later.
+- On-device only. Your media stays on your phone unless you export an encrypted backup yourself. No cloud, no servers, no account.
+- Private vault. Browse, view, and play back your captures inside the app, decrypted in memory for viewing only.
+- No tracking. No ads, no analytics, no data collection.
+- Open source. The full source code is public under the GPLv3, so anyone can verify exactly how it works.
+
+FEATURES
+
+- Photo and video capture with a familiar, simple camera interface, on phones and tablets
+- Encrypted gallery grouped by day, with one viewer to swipe through your photos and videos
+- Your choice of storage. Keep the vault in private app storage that only AES Camera can read, or on shared storage if you prefer to manage the files yourself.
+- Encrypted backup and restore. Export the vault to an SD card, USB drive or cloud folder, and restore it later. Backups stay encrypted.
+- Encrypted sharing. Share items from the vault as encrypted files; nothing ever leaves your phone in the clear. Anyone running AES Camera with the same password can open a shared photo or video and add it to their own vault.
+- Open encrypted files you receive in a messenger, email or file manager straight in AES Camera.
+- Rapid capture for quick bursts of photos.
+- Duress password. If someone forces you to unlock the app, enter a second password instead: it quietly wipes the vault you chose and opens a harmless decoy vault.
+
+YOUR KEY, YOUR RESPONSIBILITY
+
+AES Camera is built so that only you can open your vault. That also means there is no backdoor and no recovery service: if you lose your key, your encrypted media cannot be recovered by anyone, including the developer. Please keep your key safe.
+
+PRIVACY
+
+AES Camera does not collect, share, or transmit your data. Everything happens on your device. There are no accounts, and no network calls that move your media off the phone.
+
+OPEN SOURCE
+
+AES Camera is free and open-source software, licensed under the GNU General Public License v3.0. You are welcome to read the code, build it yourself, and confirm its behavior.
+
+Learn more at https://aescamera.dineshkumar.dev

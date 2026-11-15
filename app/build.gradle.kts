@@ -27,8 +27,8 @@ android {
         // 26+ required: MediaRecorder.OutputFormat.MPEG_2_TS for encrypt-while-recording
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
 
         vectorDrawables.useSupportLibrary = true
 
@@ -54,6 +54,12 @@ android {
         }
     }
 
+    // The dependency report is a blob encrypted for Google. Play Console uses the copy in
+    // the bundle for SDK warnings; F-Droid flags it in the APK.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = true
+    }
 
     buildFeatures {
         viewBinding = true
@@ -119,7 +125,8 @@ dependencies {
 }
 
 // Without signing values a release would package unsigned; stop with the reason instead.
-if (missingReleaseSigningKeys.isNotEmpty()) {
+// Store build servers that sign the APK themselves (F-Droid) pass -PunsignedRelease.
+if (missingReleaseSigningKeys.isNotEmpty() && !project.hasProperty("unsignedRelease")) {
     val message = "Release signing needs ${missingReleaseSigningKeys.joinToString()} " +
         "in local.properties (see README, Release build)"
     tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }

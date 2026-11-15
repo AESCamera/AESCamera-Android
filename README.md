@@ -58,6 +58,16 @@ legacy AES-CBC path.
 
 > ⚠️ **There is no key recovery.** If you forget your password, the encrypted media cannot be decrypted.
 
+## Install
+
+- **Google Play:** [AES Camera](https://play.google.com/store/apps/details?id=dev.dineshkumar.aescamera)
+- **APK:** signed builds are attached to each [GitHub release](https://github.com/AESCamera/AESCamera-Android/releases).
+
+The Play version is signed by Google (Play App Signing), so it can't be updated with an
+APK from elsewhere, or the other way round. Switching means uninstalling first, and
+uninstalling deletes a vault kept in private app storage. **Export a backup before you
+switch**, then restore it in the new install.
+
 ## Screenshots
 
 Visit the [website](https://aescamera.dineshkumar.dev) for the full walkthrough.
@@ -66,7 +76,8 @@ Visit the [website](https://aescamera.dineshkumar.dev) for the full walkthrough.
 
 **Requirements**
 
-- JDK 17 or newer
+- JDK 21 for Gradle itself (`gradle/gradle-daemon-jvm.properties`). An installed one is
+  used; otherwise Gradle downloads one.
 - Android SDK with the **API 36** platform and build-tools
 - Gradle 9.4.1 - provided by the wrapper (`./gradlew`)
 
