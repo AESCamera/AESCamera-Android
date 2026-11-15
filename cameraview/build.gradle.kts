@@ -34,7 +34,6 @@ android {
 dependencies {
     api("androidx.exifinterface:exifinterface:1.3.3")
     api("androidx.lifecycle:lifecycle-common:2.3.1")
-    api("com.google.android.gms:play-services-tasks:17.2.1")
     api("androidx.annotation:annotation:1.2.0")
     api("com.otaliastudios.opengl:egloo:0.6.1")
 }
