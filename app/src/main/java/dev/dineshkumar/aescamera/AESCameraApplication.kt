@@ -21,21 +21,28 @@ class AESCameraApplication : Application() {
         set(value) {
             field = value
 
+            // Keys derived for the previous vault never outlive it (also not after a
+            // duress unlock has wiped that vault).
+            EncryptionUtils.clearKeyCache()
+            synchronized(prewarmLock) {
+                preparedPhotoSalt = null
+                preparedVideoSalt = null
+            }
+
             if (value == null) {
-                EncryptionUtils.clearKeyCache()
-                synchronized(prewarmLock) {
-                    preparedPhotoSalt = null
-                    preparedVideoSalt = null
-                }
                 outputDirectory = null
+                vaultPayload = null
                 keyLiveData.postValue(null)
                 return
             }
 
             // Only an existing vault is opened here. A key without a vault stays
             // directory-less until the first save (see ensureVault), so a mistyped
-            // password leaves nothing behind.
-            outputDirectory = VaultUtils.findVault(value, this)
+            // password leaves nothing behind. A duress password wipes its targets here,
+            // inside the same "Unlocking…" step as any other unlock.
+            val match = VaultUtils.unlockVault(value, this)
+            outputDirectory = match?.dir
+            vaultPayload = match?.payload
 
             keyLiveData.postValue(value)
             prewarmKeys()
@@ -114,7 +121,9 @@ class AESCameraApplication : Application() {
      */
     fun relocateVault() {
         val currentKey = key ?: return
-        outputDirectory = VaultUtils.findVault(currentKey, this)
+        val match = VaultUtils.findVaultMatch(currentKey, VaultUtils.baseDir(this))
+        outputDirectory = match?.dir
+        vaultPayload = match?.payload
         // Observers (gallery, viewers) rebuild against the new directory.
         keyLiveData.postValue(currentKey)
     }
@@ -123,6 +132,14 @@ class AESCameraApplication : Application() {
      * Returns the vault directory for the current key, creating it on first use. Runs a
      * PBKDF2 derivation when it creates, so call off the main thread. Null when locked.
      */
+    /**
+     * The verifier settings of the open vault (its duress password, if it set one), or
+     * null while locked or before the vault exists. Settings shows only the owner fields,
+     * so a decoy vault looks like any vault without a duress password.
+     */
+    @Volatile
+    var vaultPayload: VaultUtils.VerifierPayload? = null
+
     @Synchronized
     fun ensureVault(): File? {
         val currentKey = key ?: return null
@@ -133,6 +150,7 @@ class AESCameraApplication : Application() {
             return null
         }
         outputDirectory = created
+        vaultPayload = VaultUtils.VerifierPayload()
         return created
     }
 

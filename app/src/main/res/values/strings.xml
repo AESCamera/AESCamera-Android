@@ -149,4 +149,48 @@
     <string name="open_app_settings">Open settings</string>
     <string name="close">Close</string>
     <string name="capture_failed_message">Capture failed: %1$s</string>
+
+    <!-- Duress password -->
+    <string name="settings_duress">Duress password</string>
+    <string name="settings_duress_desc">A second password for when someone forces you to unlock AES Camera. Entering it at the unlock prompt quietly wipes your photos and videos, then opens a harmless decoy vault.</string>
+    <string name="settings_duress_set_this">A duress password is set. Entering it at the unlock prompt wipes this vault, then opens its decoy vault.</string>
+    <string name="settings_duress_set_all">A duress password is set. Entering it at the unlock prompt wipes this vault and every other vault, then opens its decoy vault.</string>
+    <string name="settings_duress_setup">Set up duress password…</string>
+    <string name="settings_duress_change">Change duress password…</string>
+    <string name="settings_duress_decoy">Add decoy photos…</string>
+    <string name="settings_duress_remove">Remove duress password</string>
+    <string name="duress_setup_title">Set up a duress password</string>
+    <string name="duress_setup_intro">If someone forces you to unlock AES Camera, enter this password instead of your real one. AES Camera then wipes what you choose below and opens a decoy vault, as if it were your normal vault. There is no sign that anything was wiped.</string>
+    <string name="duress_password">Duress password</string>
+    <string name="duress_password_confirm">Repeat the duress password</string>
+    <string name="duress_scope_title">When it is entered, wipe</string>
+    <string name="duress_scope_this">This vault</string>
+    <string name="duress_scope_all">This vault and every other vault</string>
+    <string name="duress_scope_all_desc">Includes vaults opened by your other passwords. Only the decoy vault is kept.</string>
+    <string name="duress_limits">Limits: it can\'t help if someone copies your phone\'s storage before you enter it. Exported backups and files you shared are not wiped.</string>
+    <string name="duress_ack">I understand wiped photos and videos can\'t be recovered</string>
+    <string name="duress_change_warning">Your current decoy vault and its photos are deleted.</string>
+    <string name="duress_set_action">Set</string>
+    <string name="duress_error_empty">Enter a password</string>
+    <string name="duress_error_mismatch">The passwords don\'t match</string>
+    <string name="duress_error_same">Choose a password different from this vault\'s</string>
+    <string name="duress_error_in_use">This password already opens a vault. Choose a different one.</string>
+    <string name="duress_failed">Couldn\'t set up the duress password</string>
+    <string name="duress_setting_up">Setting up…</string>
+    <string name="duress_done_title">Duress password set</string>
+    <string name="duress_done_message">Add a few harmless photos to the decoy vault now, so it doesn\'t look empty when it opens? Don\'t unlock with the duress password unless you mean to wipe.</string>
+    <string name="duress_add_now">Add photos</string>
+    <string name="duress_later">Later</string>
+    <string name="duress_enter_title">Enter the duress password</string>
+    <string name="duress_checking">Checking…</string>
+    <string name="duress_wrong">That isn\'t this vault\'s duress password</string>
+    <string name="duress_adding">Adding decoy photos…</string>
+    <plurals name="duress_added">
+        <item quantity="one">Added %1$d photo to the decoy vault. %2$d skipped.</item>
+        <item quantity="other">Added %1$d photos to the decoy vault. %2$d skipped.</item>
+    </plurals>
+    <string name="duress_remove_title">Remove the duress password?</string>
+    <string name="duress_remove_message">The decoy vault and its photos are deleted. Your photos and videos in this vault stay as they are.</string>
+    <string name="duress_remove_action">Remove</string>
+    <string name="duress_removed">Duress password removed</string>
 </resources>

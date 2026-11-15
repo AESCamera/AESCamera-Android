@@ -41,6 +41,11 @@ class ThumbnailUtils {
                 return
             }
 
+            writeThumbnail(thumbnailFile, key, inputPicture)
+        }
+
+        /** Encrypts a thumbnail of [inputPicture] into [thumbnailFile] under [key]. */
+        fun writeThumbnail(thumbnailFile: File, key: String, inputPicture: ByteArray) {
             val thumbnailWidth = THUMBNAIL_WIDTH_PX
 
             // Subsampled, EXIF-oriented decode: a full-resolution decode of a

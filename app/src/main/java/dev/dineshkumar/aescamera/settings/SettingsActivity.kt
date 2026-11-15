@@ -4,25 +4,37 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.widget.CheckBox
+import android.widget.RadioGroup
+import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.view.isVisible
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import dev.dineshkumar.aescamera.AESCameraApplication
 import dev.dineshkumar.aescamera.ProtectedBaseActivity
 import dev.dineshkumar.aescamera.R
 import dev.dineshkumar.aescamera.databinding.ActivitySettingsBinding
 import dev.dineshkumar.aescamera.utils.AppPrefs
+import dev.dineshkumar.aescamera.utils.DecoyImporter
 import dev.dineshkumar.aescamera.utils.MigrationCancelledException
 import dev.dineshkumar.aescamera.utils.ProgressDialogController
 import dev.dineshkumar.aescamera.utils.VaultExporter
 import dev.dineshkumar.aescamera.utils.VaultLocation
 import dev.dineshkumar.aescamera.utils.VaultStorage
+import dev.dineshkumar.aescamera.utils.VaultUtils
 import dev.dineshkumar.aescamera.utils.applySystemBarInsetsAsPadding
+import java.io.File
 
 /**
  * Vault location (private app storage or shared storage, moved on change), backup and
- * restore through the system file picker, and the capture toggles (rapid capture, last
- * capture preview).
+ * restore through the system file picker, the duress password, and the capture toggles
+ * (rapid capture, last capture preview).
  */
 class SettingsActivity : ProtectedBaseActivity() {
 
@@ -35,6 +47,11 @@ class SettingsActivity : ProtectedBaseActivity() {
     private var pendingExport: Uri? = null
     private var pendingRestore: List<Uri>? = null
 
+    // The decoy vault (and its password) photos are being picked for, and a pick that
+    // came back while the vault was locked.
+    private var decoyTarget: Pair<String, File>? = null
+    private var pendingDecoy: List<Uri>? = null
+
     private val exportLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri == null) return@registerForActivityResult
@@ -45,6 +62,15 @@ class SettingsActivity : ProtectedBaseActivity() {
         registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             if (uris.isNullOrEmpty()) return@registerForActivityResult
             if (isLocked()) pendingRestore = uris else runRestore(uris)
+        }
+
+    private val decoyPicker =
+        registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+            if (decoyTarget == null || uris.isEmpty()) {
+                decoyTarget = null
+                return@registerForActivityResult
+            }
+            if (isLocked()) pendingDecoy = uris else runDecoyImport(uris)
         }
 
     private fun isLocked() = (application as AESCameraApplication).key == null
@@ -95,11 +121,261 @@ class SettingsActivity : ProtectedBaseActivity() {
             restoreLauncher.launch(arrayOf("*/*"))
         }
 
+        binding.duressSetupButton.setOnClickListener { showDuressSetup() }
+        binding.duressDecoyButton.setOnClickListener { askDuressPassword() }
+        binding.duressRemoveButton.setOnClickListener { confirmRemoveDuress() }
+
         (application as AESCameraApplication).keyLiveData.observe(this) { key ->
+            showDuressState()
             if (key == null) return@observe
             pendingExport?.let { pendingExport = null; runExport(it) }
             pendingRestore?.let { pendingRestore = null; runRestore(it) }
+            pendingDecoy?.let { pendingDecoy = null; runDecoyImport(it) }
         }
+    }
+
+    /** Only the owner fields are shown, so a decoy vault looks like any other vault. */
+    private fun showDuressState() {
+        val payload = (application as AESCameraApplication).vaultPayload
+        val set = payload?.duressVault != null
+        binding.duressStatus.setText(
+            when {
+                !set -> R.string.settings_duress_desc
+                payload?.duressScope == VaultUtils.WipeScope.ALL_OTHERS -> R.string.settings_duress_set_all
+                else -> R.string.settings_duress_set_this
+            }
+        )
+        binding.duressSetupButton.setText(if (set) R.string.settings_duress_change else R.string.settings_duress_setup)
+        binding.duressDecoyButton.isVisible = set
+        binding.duressRemoveButton.isVisible = set
+    }
+
+    /** Password dialogs get their own FLAG_SECURE window (see ProtectedBaseActivity). */
+    private fun AlertDialog.secure(): AlertDialog = apply {
+        window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    private fun showDuressSetup() {
+        val app = application as AESCameraApplication
+        val ownerKey = app.key ?: return
+        val view = layoutInflater.inflate(R.layout.dialog_duress_setup, null)
+        val passwordLayout = view.findViewById<TextInputLayout>(R.id.duressPasswordLayout)
+        val password = view.findViewById<TextInputEditText>(R.id.duressPassword)
+        val confirmLayout = view.findViewById<TextInputLayout>(R.id.duressConfirmLayout)
+        val confirm = view.findViewById<TextInputEditText>(R.id.duressConfirm)
+        val scopeGroup = view.findViewById<RadioGroup>(R.id.duressScopeGroup)
+        val ack = view.findViewById<CheckBox>(R.id.duressAck)
+        view.findViewById<TextView>(R.id.duressChangeWarning).isVisible = app.vaultPayload?.duressVault != null
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.duress_setup_title)
+            .setView(view)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.duress_set_action, null)
+            .create()
+            .secure()
+        dialog.setOnShowListener {
+            val setButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            setButton.isEnabled = false
+            ack.setOnCheckedChangeListener { _, checked -> setButton.isEnabled = checked }
+            setButton.setOnClickListener {
+                passwordLayout.error = null
+                confirmLayout.error = null
+                val chosen = password.text.toString()
+                when {
+                    chosen.isEmpty() -> passwordLayout.error = getString(R.string.duress_error_empty)
+                    chosen != confirm.text.toString() -> confirmLayout.error = getString(R.string.duress_error_mismatch)
+                    chosen == ownerKey -> passwordLayout.error = getString(R.string.duress_error_same)
+                    else -> {
+                        val scope = if (scopeGroup.checkedRadioButtonId == R.id.duressScopeAll) {
+                            VaultUtils.WipeScope.ALL_OTHERS
+                        } else {
+                            VaultUtils.WipeScope.THIS_VAULT
+                        }
+                        dialog.dismiss()
+                        runDuressSetup(ownerKey, chosen, scope)
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun runDuressSetup(ownerKey: String, duressKey: String, scope: VaultUtils.WipeScope) {
+        val app = application as AESCameraApplication
+        val progress = ProgressDialogController(this, R.string.duress_setting_up, cancellable = false)
+        busy = true
+        progress.show()
+
+        Thread {
+            val outcome = runCatching {
+                val owner = app.ensureVault() ?: error("Locked during setup")
+                check(app.key == ownerKey) { "The vault changed during setup" }
+                val decoy = VaultUtils.setDuress(ownerKey, owner, duressKey, scope, VaultUtils.baseDir(this))
+                app.vaultPayload = (app.vaultPayload ?: VaultUtils.VerifierPayload())
+                    .copy(duressVault = decoy.name, duressScope = scope)
+                decoy
+            }
+            runOnUiThread {
+                busy = false
+                progress.dismiss()
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                showDuressState()
+                outcome.fold(
+                    onSuccess = { decoy -> offerDecoyPhotos(duressKey, decoy) },
+                    onFailure = { error ->
+                        if (error is VaultUtils.DuressPasswordInUseException) {
+                            AlertDialog.Builder(this)
+                                .setTitle(R.string.duress_setup_title)
+                                .setMessage(R.string.duress_error_in_use)
+                                .setPositiveButton(android.R.string.ok, null)
+                                .show()
+                        } else {
+                            Log.e(TAG, "Duress setup failed: ${error.message}", error)
+                            Toast.makeText(this, R.string.duress_failed, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                )
+            }
+        }.start()
+    }
+
+    private fun offerDecoyPhotos(duressKey: String, decoy: File) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.duress_done_title)
+            .setMessage(R.string.duress_done_message)
+            .setNegativeButton(R.string.duress_later, null)
+            .setPositiveButton(R.string.duress_add_now) { _, _ -> pickDecoyPhotos(duressKey, decoy) }
+            .show()
+    }
+
+    private fun pickDecoyPhotos(duressKey: String, decoy: File) {
+        decoyTarget = duressKey to decoy
+        decoyPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
+    /** Re-asks the duress password: it is never stored, and it is the decoy vault's key. */
+    private fun askDuressPassword() {
+        val app = application as AESCameraApplication
+        val ownerKey = app.key ?: return
+        val owner = app.outputDirectory ?: return
+        val view = layoutInflater.inflate(R.layout.dialog_duress_password, null)
+        val field = view.findViewById<TextInputEditText>(R.id.duressEnter)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.duress_enter_title)
+            .setView(view)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val entered = field.text.toString()
+                if (entered.isNotEmpty()) checkDuressPassword(ownerKey, owner, entered)
+            }
+            .create()
+            .secure()
+        dialog.show()
+        field.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            } else {
+                false
+            }
+        }
+        field.requestFocus()
+    }
+
+    private fun checkDuressPassword(ownerKey: String, owner: File, duressKey: String) {
+        val progress = ProgressDialogController(this, R.string.duress_checking, cancellable = false)
+        progress.show()
+        Thread {
+            val decoy = runCatching {
+                VaultUtils.findDuressVault(ownerKey, owner, duressKey, VaultUtils.baseDir(this))
+            }.getOrNull()
+            runOnUiThread {
+                progress.dismiss()
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                if (decoy == null) {
+                    Toast.makeText(this, R.string.duress_wrong, Toast.LENGTH_LONG).show()
+                } else {
+                    pickDecoyPhotos(duressKey, decoy)
+                }
+            }
+        }.start()
+    }
+
+    private fun runDecoyImport(uris: List<Uri>) {
+        val (duressKey, decoy) = decoyTarget ?: return
+        decoyTarget = null
+        val progress = ProgressDialogController(this, R.string.duress_adding, cancellable = false)
+        busy = true
+        progress.show()
+
+        Thread {
+            val outcome = runCatching {
+                DecoyImporter.import(this, uris, duressKey, decoy) { done, total ->
+                    runOnUiThread { progress.progress(done, total) }
+                }
+            }
+            runOnUiThread {
+                busy = false
+                progress.dismiss()
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                val summary = outcome.getOrElse {
+                    Log.e(TAG, "Decoy import failed: ${it.message}", it)
+                    DecoyImporter.Summary(0, uris.size)
+                }
+                Toast.makeText(
+                    this,
+                    resources.getQuantityString(R.plurals.duress_added, summary.added, summary.added, summary.skipped),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.start()
+    }
+
+    private fun confirmRemoveDuress() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.duress_remove_title)
+            .setMessage(R.string.duress_remove_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.duress_remove_action) { _, _ -> runRemoveDuress() }
+            .show()
+    }
+
+    private fun runRemoveDuress() {
+        val app = application as AESCameraApplication
+        val ownerKey = app.key ?: return
+        val owner = app.outputDirectory ?: return
+        val progress = ProgressDialogController(this, R.string.duress_setting_up, cancellable = false)
+        busy = true
+        progress.show()
+
+        Thread {
+            val outcome = runCatching {
+                VaultUtils.removeDuress(ownerKey, owner, VaultUtils.baseDir(this))
+                app.vaultPayload = app.vaultPayload?.copy(duressVault = null, duressScope = null)
+            }
+            runOnUiThread {
+                busy = false
+                progress.dismiss()
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                showDuressState()
+                outcome.exceptionOrNull()?.let { Log.e(TAG, "Removing the duress password failed", it) }
+                Toast.makeText(
+                    this,
+                    if (outcome.isSuccess) R.string.duress_removed else R.string.duress_failed,
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.start()
     }
 
     private fun showLocation(location: VaultLocation) {

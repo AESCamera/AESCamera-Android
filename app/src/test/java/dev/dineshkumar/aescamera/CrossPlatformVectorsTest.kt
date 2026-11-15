@@ -2,6 +2,7 @@ package dev.dineshkumar.aescamera
 
 import dev.dineshkumar.aescamera.utils.EncryptionUtils
 import dev.dineshkumar.aescamera.utils.EncvHeader
+import dev.dineshkumar.aescamera.utils.VaultUtils
 import dev.dineshkumar.aescamera.utils.VideoKdf
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -112,4 +113,23 @@ class CrossPlatformVectorsTest {
             }
         }
     }
+
+    @Test
+    fun verifierV2PayloadVectors() {
+        val sha = MessageDigest.getInstance("SHA-256")
+
+        val plain = VaultUtils.VerifierPayload().encode()
+        assertEquals("4983133b4bb84bc34d1f0dfefd9d0e80ed25cad2621d19f6fa28a24dd7de92c3", hex(sha.digest(plain)))
+
+        val full = VaultUtils.VerifierPayload(
+            armed = true,
+            wipeScope = VaultUtils.WipeScope.THIS_VAULT,
+            wipeTarget = "0123456789abcdef0123456789abcdef",
+            duressVault = "fedcba9876543210fedcba9876543210",
+            duressScope = VaultUtils.WipeScope.ALL_OTHERS,
+        ).encode()
+        assertEquals("41455343616d6572615661756c743a7632030102", hex(full.copyOfRange(0, 20)))
+        assertEquals("4637c87d7025782535ea62f1f5cf37dc126cdbbd68b50daffcc417005abeb036", hex(sha.digest(full)))
+    }
 }
+

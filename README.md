@@ -29,6 +29,10 @@ ever written to disk unencrypted. Media lives on-device and can only be viewed w
   and never persisted. The app **auto-locks** shortly after it goes to the background.
   Any password opens a vault — there is no wrong-password signal by design — and a vault
   is only created on disk when the first photo or video is saved.
+- **Duress password.** An optional second password for when someone forces you to unlock
+  the app. Entering it quietly wipes this vault (or every other vault) during the normal
+  unlock, then opens a decoy vault with a few harmless photos. It can't help if someone
+  copies the phone's storage first, and exported backups aren't wiped.
 - **Screenshot-resistant.** `FLAG_SECURE` blocks screenshots and recents-preview
   thumbnails on every screen.
 - **No tracking.** No analytics, no ads, no internet permission. Only `CAMERA` and
